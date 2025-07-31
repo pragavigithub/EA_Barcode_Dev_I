@@ -316,7 +316,8 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="item_code" class="form-label">Item Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="item_code" name="item_code" required>
+                        <input type="text" class="form-control" id="item_code" name="item_code" 
+                               onchange="handleItemCodeChange()" required>
                     </div>
                     <div class="mb-3">
                         <label for="item_name" class="form-label">Item Name <span class="text-danger">*</span></label>
@@ -498,8 +499,8 @@ function handleWarehouseSelection() {
         // Enable bin select and load bins
         binSelect.disabled = false;
         batchSelect.disabled = false;
-        loadBins(warehouseSelect.value);
-        loadBatches(warehouseSelect.value);
+        loadCascadingBinLocations(warehouseSelect.value);
+        loadCascadingBatches();
     } else {
         binSelect.disabled = true;
         batchSelect.disabled = true;
@@ -532,29 +533,101 @@ function addItemToGRPO(itemCode, itemName, uom, warehouseCode, poItemData) {
     modal.show();
 }
 
-// Load warehouses when modal is opened
-document.addEventListener('DOMContentLoaded', function() {
-    const addItemModal = document.getElementById('addItemModal');
-    if (addItemModal) {
-        addItemModal.addEventListener('show.bs.modal', function () {
-            loadWarehouses();
+// Load cascading warehouses
+function loadCascadingWarehouses() {
+    fetch('/api/warehouses')
+        .then(response => response.json())
+        .then(data => {
+            const warehouseSelect = document.getElementById('warehouse_select');
+            warehouseSelect.innerHTML = '<option value="">Select Warehouse...</option>';
+            
+            if (data.success && data.warehouses) {
+                data.warehouses.forEach(warehouse => {
+                    const option = document.createElement('option');
+                    option.value = warehouse.WarehouseCode;
+                    option.textContent = warehouse.WarehouseName || warehouse.WarehouseCode;
+                    warehouseSelect.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading warehouses:', error);
         });
+}
+
+// Load cascading bin locations
+function loadCascadingBinLocations(warehouseCode) {
+    if (!warehouseCode) return;
+    
+    fetch(`/api/bin-locations?warehouse=${warehouseCode}`)
+        .then(response => response.json())
+        .then(data => {
+            const binSelect = document.getElementById('bin_select');
+            binSelect.innerHTML = '<option value="">Select Bin Location...</option>';
+            
+            if (data.success && data.bins) {
+                data.bins.forEach(bin => {
+                    const option = document.createElement('option');
+                    option.value = bin.BinCode;
+                    option.textContent = bin.BinName || bin.BinCode;
+                    binSelect.appendChild(option);
+                });
+            }
+            binSelect.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error loading bin locations:', error);
+        });
+}
+
+// Load cascading batches
+function loadCascadingBatches() {
+    const itemCode = document.getElementById('item_code').value;
+    const warehouseCode = document.getElementById('warehouse_code').value;
+    
+    if (!itemCode) return;
+    
+    let url = `/api/batches?item_code=${itemCode}`;
+    if (warehouseCode) {
+        url += `&warehouse=${warehouseCode}`;
     }
-});
     
-    // Clear other fields
-    document.getElementById('quantity').value = '';
-    document.getElementById('batch_number').value = '';
-    document.getElementById('expiration_date').value = '';
-    document.getElementById('barcode').value = '';
-    
-    const modal = new bootstrap.Modal(document.getElementById('addItemModal'));
-    modal.show();
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            const batchSelect = document.getElementById('batch_select');
+            batchSelect.innerHTML = '<option value="">Select Batch...</option>';
+            
+            if (data.success && data.batches) {
+                data.batches.forEach(batch => {
+                    const option = document.createElement('option');
+                    option.value = batch.BatchNumber;
+                    option.textContent = `${batch.BatchNumber} (Qty: ${batch.Quantity}, Exp: ${batch.ExpiryDate || 'N/A'})`;
+                    option.setAttribute('data-expiry', batch.ExpiryDate);
+                    batchSelect.appendChild(option);
+                });
+            }
+            batchSelect.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error loading batches:', error);
+        });
+}
+
+// Handle item code change for cascading
+function handleItemCodeChange() {
+    const itemCode = document.getElementById('item_code').value;
+    if (itemCode) {
+        loadCascadingWarehouses();
+        loadCascadingBatches();
+    }
 }
 
 // Show add item modal
 function showAddItemModal() {
     selectedPoItemData = null;
+    
+    // Clear form fields
     document.getElementById('item_code').value = '';
     document.getElementById('item_name').value = '';
     document.getElementById('unit_of_measure').value = 'EA';
@@ -564,8 +637,46 @@ function showAddItemModal() {
     document.getElementById('expiration_date').value = '';
     document.getElementById('barcode').value = '';
     
+    // Reset dropdowns
+    document.getElementById('warehouse_select').innerHTML = '<option value="">Select Warehouse...</option>';
+    document.getElementById('bin_select').innerHTML = '<option value="">Select Bin Location...</option>';
+    document.getElementById('batch_select').innerHTML = '<option value="">Select Batch...</option>';
+    
+    // Disable dependent dropdowns
+    document.getElementById('bin_select').disabled = true;
+    document.getElementById('batch_select').disabled = true;
+    
+    // Load initial data
+    loadCascadingWarehouses();
+    
+    // Show modal
     const modal = new bootstrap.Modal(document.getElementById('addItemModal'));
     modal.show();
+}
+
+// Submit GRPO for QC approval
+function submitGRPO(grpoId) {
+    if (confirm('Are you sure you want to submit this GRPO for QC approval?')) {
+        fetch(`/grpo/${grpoId}/submit`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('GRPO submitted for QC approval successfully!');
+                location.reload();
+            } else {
+                alert('Error submitting GRPO: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error submitting GRPO');
+        });
+    }
 }
 
 // Generate barcode
@@ -703,6 +814,34 @@ function toggleManualWarehouse() {
         warehouseCode.style.display = 'none';
         warehouseSelect.parentElement.style.display = 'flex';
         warehouseSelect.focus();
+    }
+}
+
+// Toggle manual bin entry  
+function toggleManualBin() {
+    const binSelect = document.getElementById('bin_select');
+    const binLocation = document.getElementById('bin_location');
+
+    if (binLocation.style.display === 'none') {
+        binLocation.style.display = 'block';
+        binSelect.parentElement.style.display = 'none';
+        binLocation.focus();
+    } else {
+        binLocation.style.display = 'none';
+        binSelect.parentElement.style.display = 'flex';
+        binSelect.focus();
+    }
+}
+
+// Handle bin selection
+function handleBinSelection() {
+    const binSelect = document.getElementById('bin_select');
+    const binLocation = document.getElementById('bin_location');
+
+    if (binSelect.value) {
+        binLocation.value = binSelect.value;
+        binLocation.style.display = 'none';
+        binSelect.parentElement.style.display = 'flex';
     }
 }
 
