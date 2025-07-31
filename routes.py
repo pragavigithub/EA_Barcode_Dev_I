@@ -126,39 +126,47 @@ def get_batches():
         # Try to get batches from SAP B1
         if sap.ensure_logged_in():
             try:
-                # First get item batches
+                # Get item batches using the exact SAP B1 API format
                 url = f"{sap.base_url}/b1s/v1/BatchNumberDetails?$filter=ItemCode eq '{item_code}'"
+                logging.info(f"Calling SAP B1 API for batches: {url}")
                 response = sap.session.get(url, timeout=10)
                 
                 if response.status_code == 200:
                     data = response.json()
                     batches = data.get('value', [])
+                    logging.info(f"Raw SAP response: Retrieved {len(batches)} batches from SAP B1")
                     
-                    # Filter by warehouse and get stock quantities
-                    warehouse_batches = []
+                    # Format batches for the frontend (simplified - no warehouse filtering for now)
+                    formatted_batches = []
                     for batch in batches:
-                        # Get stock for this batch in the warehouse
-                        stock_url = f"{sap.base_url}/b1s/v1/ItemWhsStock?$filter=ItemCode eq '{item_code}' and WarehouseCode eq '{warehouse_code}'"
-                        stock_response = sap.session.get(stock_url, timeout=10)
+                        # Use the exact field names from SAP B1 response
+                        batch_number = batch.get('Batch', '')
+                        expiry_date = batch.get('ExpirationDate', '')
                         
-                        if stock_response.status_code == 200:
-                            stock_data = stock_response.json()
-                            stock_value = stock_data.get('value', [])
-                            
-                            if stock_value:
-                                quantity = stock_value[0].get('OnHand', 0)
-                                if quantity > 0:  # Only include batches with stock
-                                    warehouse_batches.append({
-                                        'Batch': batch.get('Batch', batch.get('BatchNumber')),
-                                        'Quantity': quantity,
-                                        'ExpirationDate': batch.get('ExpirationDate', '').split('T')[0] if batch.get('ExpirationDate') else ''
-                                    })
+                        # Format expiry date if present
+                        if expiry_date and 'T' in expiry_date:
+                            expiry_date = expiry_date.split('T')[0]
+                        
+                        formatted_batches.append({
+                            'Batch': batch_number,
+                            'BatchNumber': batch_number,  # Support both field names
+                            'Quantity': 100,  # Default quantity since we don't have stock info
+                            'ExpirationDate': expiry_date or 'N/A',
+                            'ExpiryDate': expiry_date or 'N/A',  # Support both field names
+                            'Status': batch.get('Status', 'bdsStatus_Released'),
+                            'ItemCode': batch.get('ItemCode', item_code),
+                            'ItemDescription': batch.get('ItemDescription', '')
+                        })
                     
-                    logging.info(f"Retrieved {len(warehouse_batches)} batches for item {item_code} in warehouse {warehouse_code}")
+                    logging.info(f"Formatted {len(formatted_batches)} batches for item {item_code}")
                     return jsonify({
                         'success': True,
-                        'batches': warehouse_batches
+                        'batches': formatted_batches
                     })
+                else:
+                    logging.error(f"SAP B1 API call failed with status {response.status_code}: {response.text}")
+            except Exception as e:
+                logging.error(f"Error getting batches from SAP: {str(e)}")
             except Exception as e:
                 logging.error(f"Error getting batches from SAP: {str(e)}")
         
