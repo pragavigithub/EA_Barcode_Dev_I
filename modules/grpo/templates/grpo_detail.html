@@ -202,45 +202,98 @@
     </div>
 </div>
 
-<!-- Add Item Modal -->
+<!-- Add Item Modal with Cascading Dropdowns -->
 <div class="modal fade" id="addItemModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Item to GRPO</h5>
+                <h5 class="modal-title">Add Item to GRN</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="addItemForm" method="POST" action="{{ url_for('add_grpo_item', grpo_id=grpo_doc.id) }}">
                 <div class="modal-body">
+                    <!-- Item Code -->
                     <div class="mb-3">
                         <label for="item_code" class="form-label">Item Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="item_code" name="item_code" required>
+                        <input type="text" class="form-control" id="item_code" name="item_code" required onchange="onItemCodeChange()">
                     </div>
+                    
+                    <!-- Item Name -->
                     <div class="mb-3">
                         <label for="item_name" class="form-label">Item Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="item_name" name="item_name" required>
                     </div>
+                    
                     <div class="row">
+                        <!-- Quantity -->
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="quantity" class="form-label">Quantity <span class="text-danger">*</span></label>
-                                <input type="number" class="form-control" id="quantity" name="quantity" step="0.01" required>
+                                <input type="number" class="form-control" id="quantity" name="quantity" step="0.01" min="1" required>
                             </div>
                         </div>
+                        
+                        <!-- Unit of Measure -->
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="unit_of_measure" class="form-label">Unit of Measure <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="unit_of_measure" name="unit_of_measure" value="EA">
+                                <label for="unit_of_measure" class="form-label">Unit of Measure (UoM) <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="unit_of_measure" name="unit_of_measure" value="EA" required>
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Warehouse -->
                     <div class="mb-3">
-                        <label for="warehouse_code" class="form-label">Warehouse Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="warehouse_code" name="warehouse_code" value="WH001">
+                        <label for="warehouse" class="form-label">Warehouse <span class="text-danger">*</span></label>
+                        <div class="d-flex">
+                            <select class="form-select me-2" id="warehouse_dropdown" name="warehouse_code" onchange="onWarehouseChange()" disabled>
+                                <option value="">Select Warehouse...</option>
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleManualWarehouse()">
+                                <i data-feather="edit-2"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="form-control mt-2" id="warehouse_manual" name="warehouse_manual" placeholder="Enter warehouse code manually" style="display: none;">
                     </div>
+                    
+                    <!-- Bin Location -->
+                    <div class="mb-3">
+                        <label for="bin_location" class="form-label">Bin Location</label>
+                        <div class="d-flex">
+                            <select class="form-select me-2" id="bin_dropdown" name="bin_location" onchange="onBinChange()" disabled>
+                                <option value="">Select Bin Location...</option>
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleManualBin()">
+                                <i data-feather="edit-2"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="form-control mt-2" id="bin_manual" name="bin_manual" placeholder="Enter bin location manually" style="display: none;">
+                    </div>
+                    
+                    <!-- Batch Number -->
                     <div class="mb-3">
                         <label for="batch_number" class="form-label">Batch Number</label>
-                        <input type="text" class="form-control" id="batch_number" name="batch_number">
+                        <div class="d-flex">
+                            <select class="form-select me-2" id="batch_dropdown" name="batch_number" disabled>
+                                <option value="">Select Batch...</option>
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleManualBatch()">
+                                <i data-feather="edit-2"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="form-control mt-2" id="batch_manual" name="batch_manual" placeholder="Enter batch number manually" style="display: none;">
+                    </div>
+                    
+                    <!-- Expiration Date -->
+                    <div class="mb-3">
+                        <label for="expiration_date" class="form-label">Expiration Date</label>
+                        <input type="date" class="form-control" id="expiration_date" name="expiration_date">
+                    </div>
+                    
+                    <!-- Supplier Barcode -->
+                    <div class="mb-3">
+                        <label for="supplier_barcode" class="form-label">Supplier Barcode</label>
+                        <input type="text" class="form-control" id="supplier_barcode" name="supplier_barcode">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -269,7 +322,9 @@ function addPOItemToGRPO(itemCode, itemName, uom, warehouse) {
     document.getElementById('item_code').value = itemCode;
     document.getElementById('item_name').value = itemName;
     document.getElementById('unit_of_measure').value = uom;
-    document.getElementById('warehouse_code').value = warehouse;
+    
+    // Trigger cascading dropdowns
+    onItemCodeChange();
     
     // Show the modal
     showAddItemModal();
@@ -309,6 +364,195 @@ function removeItem(itemId) {
     }
 }
 
+// Cascading Dropdown Functions
+function onItemCodeChange() {
+    const itemCode = document.getElementById('item_code').value;
+    if (itemCode.trim()) {
+        loadWarehouses();
+        loadBatches(itemCode);
+    } else {
+        resetDropdowns();
+    }
+}
+
+function onWarehouseChange() {
+    const warehouseCode = getSelectedWarehouse();
+    if (warehouseCode) {
+        loadBinLocations(warehouseCode);
+    } else {
+        resetBinDropdown();
+    }
+}
+
+function onBinChange() {
+    // Handle bin location selection if needed
+    console.log('Bin location selected:', document.getElementById('bin_dropdown').value);
+}
+
+function loadWarehouses() {
+    console.log('Loading warehouses...');
+    fetch('/api/warehouses')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const warehouseDropdown = document.getElementById('warehouse_dropdown');
+                warehouseDropdown.innerHTML = '<option value="">Select Warehouse...</option>';
+                
+                data.warehouses.forEach(warehouse => {
+                    const option = document.createElement('option');
+                    option.value = warehouse.WarehouseCode;
+                    option.textContent = `${warehouse.WarehouseCode} - ${warehouse.WarehouseName}`;
+                    warehouseDropdown.appendChild(option);
+                });
+                
+                warehouseDropdown.disabled = false;
+                console.log(`Loaded ${data.warehouses.length} warehouses`);
+            } else {
+                console.error('Failed to load warehouses:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading warehouses:', error);
+        });
+}
+
+function loadBinLocations(warehouseCode) {
+    console.log('Loading bin locations for warehouse:', warehouseCode);
+    fetch(`/api/bin-locations?warehouse=${warehouseCode}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const binDropdown = document.getElementById('bin_dropdown');
+                binDropdown.innerHTML = '<option value="">Select Bin Location...</option>';
+                
+                data.bins.forEach(bin => {
+                    const option = document.createElement('option');
+                    option.value = bin.BinCode;
+                    option.textContent = `${bin.BinCode} - ${bin.BinName || bin.Description || bin.BinCode}`;
+                    binDropdown.appendChild(option);
+                });
+                
+                binDropdown.disabled = false;
+                console.log(`Loaded ${data.bins.length} bin locations`);
+            } else {
+                console.error('Failed to load bin locations:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading bin locations:', error);
+        });
+}
+
+function loadBatches(itemCode, warehouseCode = null) {
+    console.log('Loading batches for item:', itemCode, 'warehouse:', warehouseCode);
+    let url = `/api/batches?item=${itemCode}`;
+    if (warehouseCode) {
+        url += `&warehouse=${warehouseCode}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const batchDropdown = document.getElementById('batch_dropdown');
+                batchDropdown.innerHTML = '<option value="">Select Batch...</option>';
+                
+                data.batches.forEach(batch => {
+                    const option = document.createElement('option');
+                    option.value = batch.BatchNumber;
+                    option.textContent = `${batch.BatchNumber} (Qty: ${batch.Quantity || 0}, Exp: ${batch.ExpirationDate || 'N/A'})`;
+                    batchDropdown.appendChild(option);
+                });
+                
+                batchDropdown.disabled = false;
+                console.log(`Loaded ${data.batches.length} batches`);
+            } else {
+                console.error('Failed to load batches:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading batches:', error);
+        });
+}
+
+// Manual Entry Toggle Functions
+function toggleManualWarehouse() {
+    const dropdown = document.getElementById('warehouse_dropdown');
+    const manual = document.getElementById('warehouse_manual');
+    
+    if (manual.style.display === 'none') {
+        manual.style.display = 'block';
+        dropdown.style.display = 'none';
+        manual.focus();
+    } else {
+        manual.style.display = 'none';
+        dropdown.style.display = 'block';
+        dropdown.focus();
+    }
+}
+
+function toggleManualBin() {
+    const dropdown = document.getElementById('bin_dropdown');
+    const manual = document.getElementById('bin_manual');
+    
+    if (manual.style.display === 'none') {
+        manual.style.display = 'block';
+        dropdown.style.display = 'none';
+        manual.focus();
+    } else {
+        manual.style.display = 'none';
+        dropdown.style.display = 'block';
+        dropdown.focus();
+    }
+}
+
+function toggleManualBatch() {
+    const dropdown = document.getElementById('batch_dropdown');
+    const manual = document.getElementById('batch_manual');
+    
+    if (manual.style.display === 'none') {
+        manual.style.display = 'block';
+        dropdown.style.display = 'none';
+        manual.focus();
+    } else {
+        manual.style.display = 'none';
+        dropdown.style.display = 'block';
+        dropdown.focus();
+    }
+}
+
+// Helper Functions
+function getSelectedWarehouse() {
+    const dropdown = document.getElementById('warehouse_dropdown');
+    const manual = document.getElementById('warehouse_manual');
+    
+    if (manual.style.display !== 'none') {
+        return manual.value;
+    } else {
+        return dropdown.value;
+    }
+}
+
+function resetDropdowns() {
+    const warehouseDropdown = document.getElementById('warehouse_dropdown');
+    const binDropdown = document.getElementById('bin_dropdown');
+    const batchDropdown = document.getElementById('batch_dropdown');
+    
+    warehouseDropdown.disabled = true;
+    binDropdown.disabled = true;
+    batchDropdown.disabled = true;
+    
+    warehouseDropdown.innerHTML = '<option value="">Select Warehouse...</option>';
+    binDropdown.innerHTML = '<option value="">Select Bin Location...</option>';
+    batchDropdown.innerHTML = '<option value="">Select Batch...</option>';
+}
+
+function resetBinDropdown() {
+    const binDropdown = document.getElementById('bin_dropdown');
+    binDropdown.disabled = true;
+    binDropdown.innerHTML = '<option value="">Select Bin Location...</option>';
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     console.log('GRPO Detail page loaded');
@@ -317,6 +561,20 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window.feather) {
         feather.replace();
     }
+    
+    // Reset form when modal is closed
+    document.getElementById('addItemModal').addEventListener('hidden.bs.modal', function () {
+        document.getElementById('addItemForm').reset();
+        resetDropdowns();
+        
+        // Reset manual entry modes
+        document.getElementById('warehouse_manual').style.display = 'none';
+        document.getElementById('bin_manual').style.display = 'none';
+        document.getElementById('batch_manual').style.display = 'none';
+        document.getElementById('warehouse_dropdown').style.display = 'block';
+        document.getElementById('bin_dropdown').style.display = 'block';
+        document.getElementById('batch_dropdown').style.display = 'block';
+    });
 });
 </script>
 {% endblock %}

@@ -140,6 +140,23 @@ Complete React Native mobile application created with:
 ## Changelog
 
 Latest Changes:
+- July 31, 2025. Replit Migration Complete + Cascading Dropdown Implementation - COMPLETED:
+  - Successfully completed migration from Replit Agent to Replit environment with PostgreSQL database
+  - Fixed critical JavaScript syntax errors causing "Add Item" button failures in GRPO templates
+  - Implemented comprehensive cascading dropdown functionality as requested by user:
+    * Item Code entry triggers Warehouse dropdown with manual entry option
+    * Warehouse selection triggers Bin Location dropdown with manual entry option  
+    * Item Code triggers Batch dropdown with available batches and manual entry option
+    * Each dropdown includes edit button (pencil icon) for manual text entry
+  - Created new cascading dropdown API endpoints (api_cascading_dropdowns.py):
+    * /api/warehouses - Get all available warehouses
+    * /api/bin-locations - Get bin locations for specific warehouse
+    * /api/batches - Get batches for specific item code and warehouse
+  - Updated MySQL migration script with document numbering series support
+  - Removed previous warehouse load, bin location, and batch load functionality methods as requested
+  - Enhanced GRPO Add Item modal to match user's screenshot exactly
+  - Fixed function name conflicts by using unique endpoint names
+  - Application running successfully on PostgreSQL with all cascading functionality working
 - July 30, 2025. MySQL Schema Fix for Local Development - COMPLETED:
   - Fixed critical MySQL database schema issues causing login failures
   - Created fix_mysql_schema.py script to add missing columns automatically
