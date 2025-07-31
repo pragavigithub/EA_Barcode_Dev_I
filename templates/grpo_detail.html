@@ -309,7 +309,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Item to GRPO</h5>
+                <h5 class="modal-title">Add Item to GRN</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="addItemForm" method="POST" action="{{ url_for('add_grpo_item', grpo_id=grpo_doc.id) }}">
@@ -341,24 +341,52 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="warehouse_code" class="form-label">Warehouse Code <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="warehouse_code" name="warehouse_code" required>
+                                <label for="warehouse_code" class="form-label">Warehouse <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <select class="form-select" id="warehouse_select" onchange="handleWarehouseSelection()">
+                                        <option value="">Select Warehouse...</option>
+                                    </select>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="toggleManualWarehouse()" title="Enter manually">
+                                        <i data-feather="edit-3"></i>
+                                    </button>
+                                </div>
+                                <input type="text" class="form-control mt-2" id="warehouse_code" name="warehouse_code"
+                                       placeholder="Or enter warehouse code manually" style="display: none;" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="bin_location" class="form-label">Bin Location</label>
-                                <input type="text" class="form-control" id="bin_location" name="bin_location">
+                                <div class="input-group">
+                                    <select class="form-select" id="bin_select" onchange="handleBinSelection()" disabled>
+                                        <option value="">Select Bin Location...</option>
+                                    </select>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="toggleManualBin()" title="Enter manually">
+                                        <i data-feather="edit-3"></i>
+                                    </button>
+                                </div>
+                                <input type="text" class="form-control mt-2" id="bin_location" name="bin_location"
+                                       placeholder="Or enter bin location manually" style="display: none;">
                             </div>
                         </div>
                     </div>
                     
                     <!-- Serial/Batch Management Section -->
+                   <!-- Serial/Batch Management Section -->
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="batch_number" class="form-label">Batch Number</label>
-                                <input type="text" class="form-control" id="batch_number" name="batch_number">
+                                <div class="input-group">
+                                    <select class="form-select" id="batch_select" onchange="handleBatchSelection()" disabled>
+                                        <option value="">Select Batch...</option>
+                                    </select>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="toggleManualBatch()" title="Enter manually">
+                                        <i data-feather="edit-3"></i>
+                                    </button>
+                                </div>
+                                <input type="text" class="form-control mt-2" id="batch_number" name="batch_number"
+                                       placeholder="Or enter batch number manually" style="display: none;">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -390,6 +418,24 @@ if (typeof selectedPoItemData === 'undefined') {
     var selectedPoItemData = null;
 }
 
+// Handle batch selection
+function handleBatchSelection() {
+    const batchSelect = document.getElementById('batch_select');
+    const batchNumber = document.getElementById('batch_number');
+    const expirationDate = document.getElementById('expiration_date');
+
+    if (batchSelect.value) {
+        batchNumber.value = batchSelect.value;
+        batchNumber.style.display = 'none';
+        batchSelect.parentElement.style.display = 'flex';
+
+        // Auto-fill expiration date if available
+        const selectedBatch = batchesData.find(b => b.Batch === batchSelect.value);
+        if (selectedBatch && selectedBatch.ExpirationDate) {
+            expirationDate.value = selectedBatch.ExpirationDate;
+        }
+    }
+}
 // Update field function
 function updateField(element) {
     const itemId = element.getAttribute('data-item-id');
@@ -419,6 +465,48 @@ function updateField(element) {
         alert('Network error updating field');
     });
 }
+
+// Toggle manual batch entry
+function toggleManualBatch() {
+    const batchSelect = document.getElementById('batch_select');
+    const batchNumber = document.getElementById('batch_number');
+
+    if (batchNumber.style.display === 'none') {
+        batchNumber.style.display = 'block';
+        batchSelect.parentElement.style.display = 'none';
+        batchNumber.focus();
+    } else {
+        batchNumber.style.display = 'none';
+        batchSelect.parentElement.style.display = 'flex';
+        batchSelect.focus();
+    }
+}
+
+// Handle warehouse selection
+function handleWarehouseSelection() {
+    const warehouseSelect = document.getElementById('warehouse_select');
+    const warehouseCode = document.getElementById('warehouse_code');
+    const binSelect = document.getElementById('bin_select');
+    const batchSelect = document.getElementById('batch_select');
+
+    if (warehouseSelect.value) {
+        warehouseCode.value = warehouseSelect.value;
+        warehouseCode.style.display = 'none';
+        warehouseSelect.parentElement.style.display = 'flex';
+
+        // Enable bin select and load bins
+        binSelect.disabled = false;
+        batchSelect.disabled = false;
+        loadBins(warehouseSelect.value);
+        loadBatches(warehouseSelect.value);
+    } else {
+        binSelect.disabled = true;
+        batchSelect.disabled = true;
+        binSelect.innerHTML = '<option value="">Select Bin Location...</option>';
+        batchSelect.innerHTML = '<option value="">Select Batch...</option>';
+    }
+}
+
 
 // Add item to GRPO function
 function addItemToGRPO(itemCode, itemName, uom, warehouseCode, poItemData) {
@@ -582,6 +670,23 @@ function showQRCodeModal(qrData, labelInfo) {
     const bsModal = new bootstrap.Modal(document.getElementById('qrCodeModal'));
     bsModal.show();
 }
+
+// Toggle manual warehouse entry
+function toggleManualWarehouse() {
+    const warehouseSelect = document.getElementById('warehouse_select');
+    const warehouseCode = document.getElementById('warehouse_code');
+
+    if (warehouseCode.style.display === 'none') {
+        warehouseCode.style.display = 'block';
+        warehouseSelect.parentElement.style.display = 'none';
+        warehouseCode.focus();
+    } else {
+        warehouseCode.style.display = 'none';
+        warehouseSelect.parentElement.style.display = 'flex';
+        warehouseSelect.focus();
+    }
+}
+
 
 // Generate QR Code
 function generateQRCode(container, data) {

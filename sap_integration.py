@@ -2036,7 +2036,7 @@ class SAPIntegration:
         if not self.ensure_logged_in():
             return []
 
-        url = f"{self.base_url}/b1s/v1/BinLocations?$filter=WhsCode eq '{warehouse_code}'"
+        url = f"{self.base_url}/b1s/v1/BinLocations?$filter=Warehouse eq '{warehouse_code}'"
 
         try:
             response = self.session.get(url)

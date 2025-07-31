@@ -122,7 +122,7 @@
                                                 data-item-name="{{ item.ItemName or item.item_name or item.Description }}"
                                                 data-uom="{{ item.UoMCode or item.UnitOfMeasure or item.unit_of_measure or item.UoM or 'EA' }}"
                                                 data-warehouse="{{ item.WarehouseCode or item.WhsCode or 'WH001' }}"
-                                                data-po-item="{{ item|tojson|e }}"
+                                                data-po-item="{{ item|tojson|e }}">
                                             <i data-feather="plus"></i> Add
                                             {% if item.SerialNum == 'tYES' %}
                                                 <span class="badge bg-warning ms-1">Serial</span>
@@ -410,14 +410,20 @@
                     </div>
                     
                     <!-- Serial/Batch Management Section -->
-                    <div class="row" id="serial_batch_section">
+                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="batch_number" class="form-label">
-                                    Batch Number
-                                    <span id="batch_required_indicator" class="text-danger" style="display: none;">*</span>
-                                </label>
-                                <input type="text" class="form-control" id="batch_number" name="batch_number">
+                                <label for="batch_number" class="form-label">Batch Number</label>
+                                <div class="input-group">
+                                    <select class="form-select" id="batch_select" onchange="handleBatchSelection()" disabled>
+                                        <option value="">Select Batch...</option>
+                                    </select>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="toggleManualBatch()" title="Enter manually">
+                                        <i data-feather="edit-3"></i>
+                                    </button>
+                                </div>
+                                <input type="text" class="form-control mt-2" id="batch_number" name="batch_number"
+                                       placeholder="Or enter batch number manually" style="display: none;">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -574,6 +580,22 @@ function addItemToGRPO(itemCode, itemName, uom, warehouseCode, poItemData = null
     }
 }
 
+// Toggle manual batch entry
+function toggleManualBatch() {
+    const batchSelect = document.getElementById('batch_select');
+    const batchNumber = document.getElementById('batch_number');
+
+    if (batchNumber.style.display === 'none') {
+        batchNumber.style.display = 'block';
+        batchSelect.parentElement.style.display = 'none';
+        batchNumber.focus();
+    } else {
+        batchNumber.style.display = 'none';
+        batchSelect.parentElement.style.display = 'flex';
+        batchSelect.focus();
+    }
+}
+
 function generateQRLabel(itemCode, itemName, batchNumber, grpoId) {
     // Generate QR code label for GRPO item
     const data = {
@@ -634,7 +656,7 @@ function showQRLabelModal(qrData, labelInfo) {
         `;
         document.body.appendChild(modal);
     }
-    
+
     // Generate QR code using QRCode.js or similar library
     const qrContainer = document.getElementById('qrCodeContainer');
     qrContainer.innerHTML = `
@@ -667,6 +689,25 @@ function showQRLabelModal(qrData, labelInfo) {
             feather.replace();
         }
     }, 100);
+}
+
+// Handle batch selection
+function handleBatchSelection() {
+    const batchSelect = document.getElementById('batch_select');
+    const batchNumber = document.getElementById('batch_number');
+    const expirationDate = document.getElementById('expiration_date');
+
+    if (batchSelect.value) {
+        batchNumber.value = batchSelect.value;
+        batchNumber.style.display = 'none';
+        batchSelect.parentElement.style.display = 'flex';
+
+        // Auto-fill expiration date if available
+        const selectedBatch = batchesData.find(b => b.Batch === batchSelect.value);
+        if (selectedBatch && selectedBatch.ExpirationDate) {
+            expirationDate.value = selectedBatch.ExpirationDate;
+        }
+    }
 }
 
 function generateQRCode(text, canvasId) {
