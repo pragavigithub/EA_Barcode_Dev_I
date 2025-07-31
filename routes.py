@@ -114,8 +114,12 @@ def get_batches():
         item_code = request.args.get('item')
         warehouse_code = request.args.get('warehouse')
         
-        if not item_code or not warehouse_code:
-            return jsonify({'success': False, 'error': 'Item code and warehouse code required'}), 400
+        if not item_code:
+            return jsonify({'success': False, 'error': 'Item code is required'}), 400
+        
+        # Use default warehouse if none provided
+        if not warehouse_code:
+            warehouse_code = 'WH001'
         
         sap = SAPIntegration()
         
