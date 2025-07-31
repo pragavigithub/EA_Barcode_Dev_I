@@ -34,56 +34,10 @@ app.secret_key = os.environ.get(
     "SESSION_SECRET") or "dev-secret-key-change-in-production"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure database with multiple database support
-# Priority: MySQL (user preference) > PostgreSQL (Replit) > SQLite (fallback)
-database_url = None
-db_type = "unknown"
-
-# Priority 1: MySQL (user's preferred database) - keep for local development
-try:
-    if (os.environ.get('DATABASE_URL', '').startswith('mysql')) or (
-        os.environ.get('MYSQL_HOST') and 
-        os.environ.get('MYSQL_USER') and 
-        os.environ.get('MYSQL_PASSWORD') and 
-        os.environ.get('MYSQL_DATABASE')
-    ):
-        if os.environ.get('DATABASE_URL', '').startswith('mysql'):
-            database_url = os.environ.get('DATABASE_URL')
-            db_type = "mysql"
-            logging.info("✅ Using MySQL database from DATABASE_URL")
-        else:
-            mysql_user = os.environ.get('MYSQL_USER')
-            mysql_password = os.environ.get('MYSQL_PASSWORD')
-            mysql_host = os.environ.get('MYSQL_HOST')
-            mysql_port = os.environ.get('MYSQL_PORT', '3306')
-            mysql_database = os.environ.get('MYSQL_DATABASE')
-            
-            # URL encode password if it contains special characters
-            from urllib.parse import quote_plus
-            mysql_password_encoded = quote_plus(mysql_password) if mysql_password else mysql_password
-            
-            # Validate MySQL parameters
-            if mysql_user and mysql_password and mysql_host and mysql_database:
-                database_url = f"mysql+pymysql://{mysql_user}:{mysql_password_encoded}@{mysql_host}:{mysql_port}/{mysql_database}"
-                db_type = "mysql"
-                logging.info(f"✅ Using MySQL database: {mysql_host}:{mysql_port}/{mysql_database}")
-            else:
-                logging.warning("⚠️ MySQL configuration incomplete - missing required parameters")
-except Exception as e:
-    logging.error(f"❌ MySQL configuration error: {e}")
-
-if not database_url:
-    logging.info("🔧 MySQL not configured - checking PostgreSQL")
-
-# Priority 2: PostgreSQL (for Replit deployment when MySQL not available)
-if not database_url and os.environ.get("DATABASE_URL"):
-    database_url = os.environ.get("DATABASE_URL")
-    db_type = "postgresql"
-    logging.info("✅ Using PostgreSQL database for Replit deployment")
-    logging.info("💡 To use MySQL instead, run: python setup_mysql_database.py")
-
+# Configure database - Use PostgreSQL for Replit environment
+database_url = os.environ.get("DATABASE_URL")
 if database_url:
-    # Production database configuration
+    logging.info(f"✅ Using PostgreSQL database from DATABASE_URL")
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_recycle": 300,
@@ -91,42 +45,11 @@ if database_url:
         "pool_size": 10,
         "max_overflow": 20
     }
-    # Log database configuration (URL already masked by environment)
-    logging.info(f"Database URL configured: {database_url[:50]}...")
+    db_type = "postgresql"
 else:
-    # Local development fallback - create SQLite database with proper path handling
-    import tempfile
-    
-    db_type = "sqlite"
-    logging.info("⚠️  MySQL/PostgreSQL not configured, falling back to SQLite")
-    
-    # Try to create instance directory in current working directory
-    try:
-        instance_dir = os.path.join(os.getcwd(), "instance")
-        os.makedirs(instance_dir, exist_ok=True)
-        db_path = os.path.join(instance_dir, "wms.db")
-        
-        # Test if we can write to this location
-        test_file = os.path.join(instance_dir, "test.tmp")
-        with open(test_file, 'w') as f:
-            f.write("test")
-        os.remove(test_file)
-        
-        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
-        logging.info(f"📁 Using SQLite database for local development: {db_path}")
-        
-    except (OSError, PermissionError) as e:
-        # Fallback to temp directory
-        logging.warning(f"Cannot create database in instance directory: {e}")
-        temp_dir = tempfile.gettempdir()
-        db_path = os.path.join(temp_dir, "wms.db")
-        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
-        logging.info(f"📁 Using SQLite database in temp directory: {db_path}")
-        
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-    }
+    # This should not happen in Replit environment
+    logging.error("❌ DATABASE_URL not found in environment")
+    raise RuntimeError("Database not configured properly for Replit environment")
 
 # Store database type for use in other modules
 app.config["DB_TYPE"] = db_type
@@ -154,65 +77,29 @@ with app.app_context():
     db.create_all()
     logging.info("Database tables created")
     
-    # Add missing columns for local SQLite development
-    if not database_url:  # Only for local SQLite
-        try:
-            from sqlalchemy import text
-            
-            # Check if we're using SQLite and add missing columns
-            if 'sqlite' in str(db.engine.url):
-                logging.info("🔧 Checking for missing columns in SQLite database...")
-                
-                # Try to add notes column to grpo_documents if it doesn't exist
-                try:
-                    db.session.execute(text("ALTER TABLE grpo_documents ADD COLUMN notes TEXT"))
-                    db.session.commit()
-                    logging.info("✅ Added 'notes' column to grpo_documents")
-                except Exception as e:
-                    if "duplicate column name" in str(e).lower() or "already exists" in str(e).lower():
-                        logging.info("✓ 'notes' column already exists")
-                    else:
-                        logging.debug(f"Notes column: {e}")
-                
-                # Try to add serial_number column to grpo_items if it doesn't exist
-                try:
-                    db.session.execute(text("ALTER TABLE grpo_items ADD COLUMN serial_number VARCHAR(50)"))
-                    db.session.commit()
-                    logging.info("✅ Added 'serial_number' column to grpo_items")
-                except Exception as e:
-                    if "duplicate column name" in str(e).lower() or "already exists" in str(e).lower():
-                        logging.info("✓ 'serial_number' column already exists")
-                    else:
-                        logging.debug(f"Serial number column: {e}")
-                        
-                logging.info("✅ SQLite schema migration completed")
-                
-        except Exception as e:
-            logging.warning(f"Schema migration warning: {e}")
-
-    # Create default branch (with error handling for MySQL)
+    # Create default data for PostgreSQL database
     try:
         from models_extensions import Branch
+        from werkzeug.security import generate_password_hash
+        from models import User
+        
+        # Create default branch
         default_branch = Branch.query.filter_by(id='BR001').first()
         if not default_branch:
             default_branch = Branch()
             default_branch.id = 'BR001'
             default_branch.name = 'Main Branch'
+            default_branch.description = 'Main Office Branch'
             default_branch.address = 'Main Office'
+            default_branch.phone = '123-456-7890'
+            default_branch.email = 'main@company.com'
+            default_branch.manager_name = 'Branch Manager'
             default_branch.is_active = True
             default_branch.is_default = True
             db.session.add(default_branch)
-            db.session.commit()
             logging.info("Default branch created")
-    except Exception as e:
-        logging.warning(f"Could not create/query default branch: {e}")
-        logging.info("Please run fix_mysql_database.py to fix database schema")
-        # Continue with application startup
-
-    # Create default admin user (with error handling for MySQL)
-    try:
-        from werkzeug.security import generate_password_hash
-        from models import User
+        
+        # Create default admin user
         admin = User.query.filter_by(username='admin').first()
         if not admin:
             admin = User()
@@ -223,13 +110,19 @@ with app.app_context():
             admin.last_name = 'Administrator'
             admin.role = 'admin'
             admin.branch_id = 'BR001'
+            admin.branch_name = 'Main Branch'
             admin.default_branch_id = 'BR001'
+            admin.user_is_active = True
+            admin.must_change_password = False
             db.session.add(admin)
-            db.session.commit()
             logging.info("Default admin user created")
+            
+        db.session.commit()
+        logging.info("✅ Default data initialization completed")
+        
     except Exception as e:
-        logging.warning(f"Could not create/query admin user: {e}")
-        logging.info("Please run quick_mysql_fix.py to fix database schema")
+        logging.error(f"Error initializing default data: {e}")
+        db.session.rollback()
         # Continue with application startup
 
 # Import routes to register them
