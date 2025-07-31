@@ -110,11 +110,11 @@ def cascading_get_bin_locations():
 def cascading_get_batches():
     """Get batches for a specific item code and optionally warehouse"""
     try:
-        item_code = request.args.get('item')
+        item_code = request.args.get('item_code')
         warehouse_code = request.args.get('warehouse')
         
         if not item_code:
-            return jsonify({'success': False, 'error': 'Item code required'}), 400
+            return jsonify({'success': False, 'error': 'Item code is required'}), 400
         
         sap = SAPIntegration()
         
@@ -132,14 +132,20 @@ def cascading_get_batches():
                     data = response.json()
                     batches = data.get('value', [])
                     
-                    # Format batch data for dropdown
+                    # Format batch data for dropdown using correct SAP B1 field names
                     formatted_batches = []
                     for batch in batches:
+                        expiry_date = batch.get('ExpirationDate')
+                        if expiry_date:
+                            # Format date from SAP (remove time part if present)
+                            expiry_date = expiry_date.split('T')[0] if 'T' in expiry_date else expiry_date
+                        
                         formatted_batches.append({
-                            'BatchNumber': batch.get('BatchNumber', ''),
+                            'BatchNumber': batch.get('Batch'),  # SAP B1 uses 'Batch' not 'BatchNumber'
                             'Quantity': batch.get('Quantity', 0),
-                            'ExpirationDate': batch.get('ExpirationDate', ''),
-                            'ItemCode': batch.get('ItemCode', item_code)
+                            'ExpiryDate': expiry_date,  # Use ExpiryDate for consistency
+                            'ItemCode': batch.get('ItemCode', item_code),
+                            'Status': batch.get('Status', 'bdsStatus_Released')
                         })
                     
                     logging.info(f"Retrieved {len(formatted_batches)} batches for item {item_code}")
@@ -157,19 +163,19 @@ def cascading_get_batches():
         return jsonify({
             'success': True,
             'batches': [
-                {'BatchNumber': f'BATCH-{item_code}-001', 'Quantity': 100, 'ExpirationDate': future_date},
-                {'BatchNumber': f'BATCH-{item_code}-002', 'Quantity': 75, 'ExpirationDate': future_date},
-                {'BatchNumber': f'BATCH-{item_code}-003', 'Quantity': 50, 'ExpirationDate': future_date}
+                {'BatchNumber': f'BATCH-{item_code}-001', 'Quantity': 100, 'ExpiryDate': future_date},
+                {'BatchNumber': f'BATCH-{item_code}-002', 'Quantity': 75, 'ExpiryDate': future_date},
+                {'BatchNumber': f'BATCH-{item_code}-003', 'Quantity': 50, 'ExpiryDate': future_date}
             ]
         })
             
     except Exception as e:
         logging.error(f"Error in get_batches API: {str(e)}")
-        item_code = request.args.get('item', 'ITEM001')
+        item_code = request.args.get('item_code', 'ITEM001')
         # Return fallback data on error
         return jsonify({
             'success': True,
             'batches': [
-                {'BatchNumber': f'BATCH-{item_code}-001', 'Quantity': 100, 'ExpirationDate': '2025-12-31'}
+                {'BatchNumber': f'BATCH-{item_code}-001', 'Quantity': 100, 'ExpiryDate': '2025-12-31'}
             ]
         })
