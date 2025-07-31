@@ -429,10 +429,11 @@ function handleBatchSelection() {
         batchNumber.style.display = 'none';
         batchSelect.parentElement.style.display = 'flex';
 
-        // Auto-fill expiration date if available
-        const selectedBatch = batchesData.find(b => b.Batch === batchSelect.value);
-        if (selectedBatch && selectedBatch.ExpirationDate) {
-            expirationDate.value = selectedBatch.ExpirationDate;
+        // Auto-fill expiration date from selected option
+        const selectedOption = batchSelect.options[batchSelect.selectedIndex];
+        const expiry = selectedOption.getAttribute('data-expiry');
+        if (expiry) {
+            expirationDate.value = expiry;
         }
     }
 }
@@ -522,6 +523,24 @@ function addItemToGRPO(itemCode, itemName, uom, warehouseCode, poItemData) {
     document.getElementById('unit_of_measure').value = selectedPoItemData.uom;
     document.getElementById('warehouse_code').value = selectedPoItemData.warehouseCode;
     document.getElementById('bin_location').value = selectedPoItemData.warehouseCode + '-BIN-01';
+    
+    // Load warehouses on modal open
+    loadWarehouses();
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('addItemModal'));
+    modal.show();
+}
+
+// Load warehouses when modal is opened
+document.addEventListener('DOMContentLoaded', function() {
+    const addItemModal = document.getElementById('addItemModal');
+    if (addItemModal) {
+        addItemModal.addEventListener('show.bs.modal', function () {
+            loadWarehouses();
+        });
+    }
+});
     
     // Clear other fields
     document.getElementById('quantity').value = '';
@@ -685,6 +704,123 @@ function toggleManualWarehouse() {
         warehouseSelect.parentElement.style.display = 'flex';
         warehouseSelect.focus();
     }
+}
+
+// Toggle manual bin entry  
+function toggleManualBin() {
+    const binSelect = document.getElementById('bin_select');
+    const binLocation = document.getElementById('bin_location');
+
+    if (binLocation.style.display === 'none') {
+        binLocation.style.display = 'block';
+        binSelect.parentElement.style.display = 'none';
+        binLocation.focus();
+    } else {
+        binLocation.style.display = 'none';
+        binSelect.parentElement.style.display = 'flex';
+        binSelect.focus();
+    }
+}
+
+// Handle bin selection
+function handleBinSelection() {
+    const binSelect = document.getElementById('bin_select');
+    const binLocation = document.getElementById('bin_location');
+
+    if (binSelect.value) {
+        binLocation.value = binSelect.value;
+        binLocation.style.display = 'none';
+        binSelect.parentElement.style.display = 'flex';
+    }
+}
+
+// Load warehouses from SAP B1
+function loadWarehouses() {
+    console.log('Loading warehouses...');
+    fetch('/api/get-warehouses')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const warehouseSelect = document.getElementById('warehouse_select');
+                warehouseSelect.innerHTML = '<option value="">Select Warehouse...</option>';
+                
+                data.warehouses.forEach(warehouse => {
+                    const option = document.createElement('option');
+                    option.value = warehouse.WarehouseCode;
+                    option.textContent = `${warehouse.WarehouseCode} - ${warehouse.WarehouseName}`;
+                    warehouseSelect.appendChild(option);
+                });
+                
+                console.log(`Loaded ${data.warehouses.length} warehouses`);
+            } else {
+                console.error('Failed to load warehouses:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading warehouses:', error);
+        });
+}
+
+// Load bins for selected warehouse
+function loadBins(warehouseCode) {
+    console.log(`Loading bins for warehouse: ${warehouseCode}`);
+    fetch(`/api/get-bins?warehouse=${warehouseCode}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const binSelect = document.getElementById('bin_select');
+                binSelect.innerHTML = '<option value="">Select Bin Location...</option>';
+                
+                data.bins.forEach(bin => {
+                    const option = document.createElement('option');
+                    option.value = bin.BinCode;
+                    option.textContent = `${bin.BinCode} - ${bin.BinName || bin.BinCode}`;
+                    binSelect.appendChild(option);
+                });
+                
+                console.log(`Loaded ${data.bins.length} bins for warehouse ${warehouseCode}`);
+            } else {
+                console.error('Failed to load bins:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading bins:', error);
+        });
+}
+
+// Load batches for selected item and warehouse
+function loadBatches(warehouseCode) {
+    const itemCode = document.getElementById('item_code').value;
+    if (!itemCode) {
+        console.log('No item code available for batch loading');
+        return;
+    }
+
+    console.log(`Loading batches for item: ${itemCode}, warehouse: ${warehouseCode}`);
+    fetch(`/api/get-batches?item=${itemCode}&warehouse=${warehouseCode}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const batchSelect = document.getElementById('batch_select');
+                batchSelect.innerHTML = '<option value="">Select Batch...</option>';
+                
+                data.batches.forEach(batch => {
+                    const option = document.createElement('option');
+                    option.value = batch.Batch;
+                    option.textContent = `${batch.Batch} (Qty: ${batch.Quantity || 0}, Exp: ${batch.ExpirationDate || 'N/A'})`;
+                    option.setAttribute('data-expiry', batch.ExpirationDate || '');
+                    option.setAttribute('data-quantity', batch.Quantity || 0);
+                    batchSelect.appendChild(option);
+                });
+                
+                console.log(`Loaded ${data.batches.length} batches for item ${itemCode}`);
+            } else {
+                console.error('Failed to load batches:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading batches:', error);
+        });
 }
 
 
