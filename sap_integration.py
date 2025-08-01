@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from app import app
-
+import urllib.parse
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -361,26 +361,58 @@ class SAPIntegration:
             logging.info(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry}, IsSystemBin: {is_system_bin})")
             print(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry}, IsSystemBin: {is_system_bin})")
 
-            # Step 2: Get warehouse information for BusinessPlaceID
-            warehouse_url = f"{self.base_url}/b1s/v1/Warehouses?$select=BusinessPlaceID,WarehouseCode,DefaultBin&$filter=WarehouseCode eq '{warehouse_code}'"
-            warehouse_response = self.session.get(warehouse_url)
-            
-            logging.info(f"🏭 Warehouse info URL: {warehouse_url}")
-            print(f"🏭 Warehouse info URL: {warehouse_url}")
-            
-            business_place_id = 0
-            default_bin = 0
-            if warehouse_response.status_code == 200:
-                warehouse_data = warehouse_response.json().get('value', [])
-                if warehouse_data:
-                    business_place_id = warehouse_data[0].get('BusinessPlaceID', 0)
-                    default_bin = warehouse_data[0].get('DefaultBin', 0)
-                    logging.info(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
-                    print(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
+            #Step 2:
+
+            crossjoin_url = (f"{self.base_url}/b1s/v1/$crossjoin(Items,Items/ItemWarehouseInfoCollection)?"
+                             f"$expand=Items($select=ItemCode,QuantityOnStock),Items/ItemWarehouseInfoCollection($select=InStock,Ordered,StandardAveragePrice)&"
+                             f"$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
+            print("[DEBUG] Calling URL:", crossjoin_url)
+            item_response = self.session.get(crossjoin_url)
+            print("[DEBUG] Status code:", item_response.status_code)
+            print("[DEBUG] Response text:", item_response.text[:300])  # Only first 300 chars
+
+            if item_response.status_code == 200:
+                try:
+                    item_data = item_response.json().get('value', [])
+                    if item_data:
+                        item_info = item_data[0]
+
+                    else:
+                        print("No items matched your query.")
+                except Exception as e:
+                    print("JSON parsing error:", e)
+                    print(item_response.text)
+            else:
+                print("Request failed:", item_response.status_code)
+                print(item_response.text)
+            # # item_info_url_i = (f"{self.base_url}"+"/b1/v1/"+"$crossjoin(Items,Items/ItemWarehouseInfoCollection)?$expand=Items($select ItemCode,UoMGroupEntry),Items/ItemWarehouseInfoCollection($select InStock,Ordered,StandardAveragePrice)&$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
+            # # print(item_info_url_i)
+            # # item_response = self.session.get(item_info_url_i)
+            # # item_data = item_response.json().get('value', [])
+            # # item_info = item_data[0]
+            # # print("item_info-->"+item_info)
+            # ####
+            #
+            # # Step 2: Get warehouse information for BusinessPlaceID
+            # warehouse_url = f"{self.base_url}/b1s/v1/Warehouses?$select=BusinessPlaceID,WarehouseCode,DefaultBin&$filter=WarehouseCode eq '{warehouse_code}'"
+            # warehouse_response = self.session.get(warehouse_url)
+            #
+            # logging.info(f"🏭 Warehouse info URL: {warehouse_url}")
+            # print(f"🏭 Warehouse info URL: {warehouse_url}")
+            #
+            # business_place_id = 0
+            # default_bin = 0
+            # if warehouse_response.status_code == 200:
+            #     warehouse_data = warehouse_response.json().get('value', [])
+            #     if warehouse_data:
+            #         business_place_id = warehouse_data[0].get('BusinessPlaceID', 0)
+            #         default_bin = warehouse_data[0].get('DefaultBin', 0)
+            #         logging.info(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
+            #         print(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
 
             # Step 3: Get batch number details that match this bin's SystemNumber
             # Based on your API response, SystemNumber maps to the bin's AbsEntry
-            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=SystemNumber eq {abs_entry}"
+            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=ItemCode eq {1}"
             batch_response = self.session.get(batch_url)
             
             logging.info(f"📦 Batch details URL: {batch_url}")
@@ -457,7 +489,7 @@ class SAPIntegration:
                     'WarehouseCode': warehouse_code,
                     'Warehouse': warehouse_code,
                     'BinAbsEntry': abs_entry,
-                    'BusinessPlaceID': business_place_id,
+                    #'BusinessPlaceID': business_place_id,
                     'SystemNumber': system_number,
                     'DocEntry': doc_entry,
                     'Status': status,
@@ -465,7 +497,7 @@ class SAPIntegration:
                     'ExpirationDate': expiration_date,
                     'ExpiryDate': expiration_date,
                     'IsSystemBin': is_system_bin,
-                    'DefaultBin': default_bin
+                   # 'DefaultBin': default_bin
                 }
                 
                 formatted_items.append(formatted_item)
