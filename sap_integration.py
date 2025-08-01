@@ -407,15 +407,21 @@ class SAPIntegration:
                     # Step 5: Get batch details for this item using your exact API pattern
                     batch_details = self._get_item_batch_details(item_code)
                     
+                    # Skip items with zero InStock quantity
+                    in_stock_qty = float(warehouse_info.get('InStock', 0))
+                    if in_stock_qty <= 0:
+                        logging.debug(f"⏭️ Skipping item {item_code} - InStock quantity is {in_stock_qty}")
+                        continue
+                    
                     # Create enhanced item record with all details
                     enhanced_item = {
                         'ItemCode': item_code,
                         'ItemName': item_info.get('ItemName', ''),
                         'UoM': item_info.get('InventoryUoM', 'EA'),
                         'QuantityOnStock': float(item_info.get('QuantityOnStock', 0)),
-                        'OnHand': float(warehouse_info.get('InStock', 0)),
-                        'OnStock': float(warehouse_info.get('InStock', 0)),
-                        'InStock': float(warehouse_info.get('InStock', 0)),
+                        'OnHand': in_stock_qty,
+                        'OnStock': in_stock_qty,
+                        'InStock': in_stock_qty,
                         'Ordered': float(warehouse_info.get('Ordered', 0)),
                         'StandardAveragePrice': float(warehouse_info.get('StandardAveragePrice', 0)),
                         'WarehouseCode': warehouse_code,
@@ -493,6 +499,7 @@ class SAPIntegration:
 
     def _get_mock_bin_items(self, bin_code):
         """Mock data for offline mode with enhanced structure matching your API responses"""
+        # Only return items with InStock > 0 to match the filtering logic
         return [
             {
                 'ItemCode': 'CO0726Y',
