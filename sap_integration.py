@@ -328,160 +328,155 @@ class SAPIntegration:
             return []
 
     def get_bin_items(self, bin_code):
-        """Get items in a specific bin location"""
+        """Get all items in a specific bin location using correct SAP B1 API fields"""
         if not self.ensure_logged_in():
-            # Return mock data for offline mode
-            logging.warning(
-                f"SAP B1 not available, returning mock bin data for {bin_code}"
-            )
-            return [{
-                'ItemCode': 'ITEM-001',
-                'ItemName': 'Sample Item 1',
-                'Quantity': 50,
-                'UoM': 'EA',
-                'BatchNumber': 'BATCH-001',
-                'ExpiryDate': '2025-12-31'
-            }, {
-                'ItemCode': 'ITEM-002',
-                'ItemName': 'Sample Item 2',
-                'Quantity': 25,
-                'UoM': 'PCS',
-                'BatchNumber': 'BATCH-002',
-                'ExpiryDate': '2025-10-15'
-            }]
+            logging.error("SAP B1 login failed, cannot fetch bin items")
+            return []
 
         try:
-            # Step 1: Get bin information and validate bin code exists
+            logging.info(f"🔍 Fetching items for bin: {bin_code}")
+            print(f"🔍 Fetching items for bin: {bin_code}")
+
+            # Step 1: Get bin information and verify it exists
             bin_info_url = f"{self.base_url}/b1s/v1/BinLocations?$filter=BinCode eq '{bin_code}'"
             bin_response = self.session.get(bin_info_url)
+            
+            logging.info(f"📍 Bin info URL: {bin_info_url}")
+            print(f"📍 Bin info URL: {bin_info_url}")
 
             if bin_response.status_code != 200:
-                logging.warning(f"Bin {bin_code} not found in SAP B1")
+                logging.warning(f"❌ Bin {bin_code} not found in SAP B1: {bin_response.status_code}")
                 return []
 
             bin_data = bin_response.json().get('value', [])
             if not bin_data:
-                logging.warning(f"Bin {bin_code} does not exist")
+                logging.warning(f"❌ Bin {bin_code} does not exist")
                 return []
 
             bin_info = bin_data[0]
             warehouse_code = bin_info.get('Warehouse', '')
             abs_entry = bin_info.get('AbsEntry', 0)
+            is_system_bin = bin_info.get('IsSystemBin', 'tNO')
 
-            logging.info(
-                f"Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry})"
-            )
-            print(
-                f"Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry})"
-            )
-            # Step 2: Get items in this bin using ItemWhsStock for warehouse inventory
-            # SAP B1 API to get items with stock in specific bin location
-            stock_url = f"{self.base_url}/b1s/v1/Warehouses"
-            params = {
-                '$filter': f"WarehouseCode eq '{warehouse_code}'",
-                '$select': 'BusinessPlaceID,WarehouseCode,DefaultBin'
-            }
+            logging.info(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry}, IsSystemBin: {is_system_bin})")
+            print(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry}, IsSystemBin: {is_system_bin})")
 
-            stock_response = self.session.get(stock_url, params=params)
-            print(stock_url)
-            print(params)
-            if stock_response.status_code != 200:
-                logging.error(
-                    f"Failed to get warehouse stock: {stock_response.status_code}"
-                )
-                return []
+            # Step 2: Get warehouse information for BusinessPlaceID
+            warehouse_url = f"{self.base_url}/b1s/v1/Warehouses?$select=BusinessPlaceID,WarehouseCode,DefaultBin&$filter=WarehouseCode eq '{warehouse_code}'"
+            warehouse_response = self.session.get(warehouse_url)
+            
+            logging.info(f"🏭 Warehouse info URL: {warehouse_url}")
+            print(f"🏭 Warehouse info URL: {warehouse_url}")
+            
+            business_place_id = 0
+            default_bin = 0
+            if warehouse_response.status_code == 200:
+                warehouse_data = warehouse_response.json().get('value', [])
+                if warehouse_data:
+                    business_place_id = warehouse_data[0].get('BusinessPlaceID', 0)
+                    default_bin = warehouse_data[0].get('DefaultBin', 0)
+                    logging.info(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
+                    print(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
 
-            stock_data = stock_response.json().get('value', [])
-            logging.info(
-                f"Found {len(stock_data)} items with stock in warehouse {warehouse_code}"
-            )
-            print(
-                f"Found {len(stock_data)} items with stock in warehouse {warehouse_code}"
-            )
-            # Step 3: Get items using proper SAP B1 API without invalid navigation properties
-            # Fix: ItemWarehouseInfoCollection is not a valid navigation property
-            # Use separate API calls to get item data and warehouse stock information
+            # Step 3: Get batch number details that match this bin's SystemNumber
+            # Based on your API response, SystemNumber maps to the bin's AbsEntry
+            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=SystemNumber eq {abs_entry}"
+            batch_response = self.session.get(batch_url)
             
-            # First, get batch numbers in this bin to identify items
-            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails"
-            batch_params = {
-                '$filter': f"SystemNumber eq {abs_entry}",
-                '$select': 'ItemCode,Batch'
-            }
-            
-            logging.info(f"Fetching batch items in bin: {batch_url}")
-            print(f"Batch URL: {batch_url}")
-            print(f"Batch params: {batch_params}")
-            
-            batch_response = self.session.get(batch_url, params=batch_params)
-            print(f"Batch response status: {batch_response.status_code}")
+            logging.info(f"📦 Batch details URL: {batch_url}")
+            print(f"📦 Batch details URL: {batch_url}")
+            print(f"📦 Batch response status: {batch_response.status_code}")
             
             if batch_response.status_code != 200:
-                logging.error(f"Failed to get batch items: {batch_response.status_code} - {batch_response.text}")
+                logging.error(f"❌ Failed to get batch items: {batch_response.status_code} - {batch_response.text}")
                 return []
 
             batch_data = batch_response.json().get('value', [])
-            logging.info(f"Retrieved {len(batch_data)} batch entries from bin {bin_code}")
+            logging.info(f"📦 Retrieved {len(batch_data)} batch entries from bin {bin_code}")
+            print(f"📦 Retrieved {len(batch_data)} batch entries from bin {bin_code}")
             
-            # Get unique item codes from batch data
-            unique_items = {}
-            for batch in batch_data:
-                item_code = batch.get('ItemCode')
-                if item_code and item_code not in unique_items:
-                    unique_items[item_code] = []
-                if item_code:
-                    unique_items[item_code].append(batch)
-            
-            logging.info(f"Found {len(unique_items)} unique items in bin {bin_code}")
-            print(f"Found {len(unique_items)} unique items in bin {bin_code}")
-
-
-            # Step 4: For each unique item, get detailed item information and format response
+            # Step 4: Process each batch item and get current stock quantities
             formatted_items = []
-            for item_code, batches in list(unique_items.items())[:10]:  # Limit to first 10 items for performance
-                if not item_code or not batches:
-                    continue
-                    
-                # Get item details from Items API
-                item_detail_url = f"{self.base_url}/b1s/v1/Items('{item_code}')?$select=ItemCode,ItemName,QuantityOnStock"
-
-                try:
-                    item_response = self.session.get(item_detail_url)
-                    if item_response.status_code == 200:
-                        item_detail = item_response.json()
-                        print(item_detail)
-                        item_name = item_detail.get('ItemName', item_code)
-                        onStock=item_detail.get('QuantityOnStock')
-                    else:
-                        item_name = item_code  # Fallback to item code if detail fetch fails
-                except:
-                    item_name = item_code
+            processed_items = set()  # Track processed items to avoid duplicates
+            
+            for batch_item in batch_data:
+                item_code = batch_item.get('ItemCode', '')
+                batch_number = batch_item.get('Batch', '')
+                item_description = batch_item.get('ItemDescription', '')
+                status = batch_item.get('Status', 'bdsStatus_Released')
+                admission_date = batch_item.get('AdmissionDate', '')
+                expiration_date = batch_item.get('ExpirationDate', '')
+                doc_entry = batch_item.get('DocEntry', 0)
+                system_number = batch_item.get('SystemNumber', abs_entry)
                 
-                # Calculate total quantity from all batches
-                total_quantity = sum(batch.get('Quantity', 0) for batch in batches)
+                if not item_code:
+                    continue
+                
+                # Create unique key for item+batch combination
+                item_batch_key = f"{item_code}|{batch_number}"
+                if item_batch_key in processed_items:
+                    continue
+                processed_items.add(item_batch_key)
+                
+                # Get current stock quantity for this item in this warehouse
+                stock_quantity = 0
+                on_hand_qty = 0
+                
+                try:
+                    # Get item warehouse stock information
+                    stock_url = f"{self.base_url}/b1s/v1/ItemWhsStocks?$filter=ItemCode eq '{item_code}' and WhsCode eq '{warehouse_code}'"
+                    stock_response = self.session.get(stock_url)
+                    
+                    if stock_response.status_code == 200:
+                        stock_data = stock_response.json().get('value', [])
+                        if stock_data:
+                            stock_info = stock_data[0]
+                            on_hand_qty = stock_info.get('OnHand', 0)
+                            stock_quantity = stock_info.get('OnStock', on_hand_qty)
+                            logging.debug(f"📊 Item {item_code} stock: OnHand={on_hand_qty}, OnStock={stock_quantity}")
+                    else:
+                        logging.warning(f"⚠️ Could not get stock info for {item_code}: {stock_response.status_code}")
+                except Exception as stock_error:
+                    logging.warning(f"⚠️ Stock lookup failed for {item_code}: {stock_error}")
+                
+                # Format the item data using correct field names from SAP API response
+                formatted_item = {
+                    'ItemCode': item_code,
+                    'ItemName': item_description or item_code,
+                    'ItemDescription': item_description,
+                    'BatchNumber': batch_number,
+                    'Batch': batch_number,
+                    'Quantity': stock_quantity if stock_quantity > 0 else 1,  # Use stock quantity or default to 1
+                    'OnHand': on_hand_qty,
+                    'OnStock': stock_quantity,
+                    'InStock': stock_quantity,
+                    'UoM': 'EA',  # Default unit of measure
+                    'BinCode': bin_code,
+                    'WarehouseCode': warehouse_code,
+                    'Warehouse': warehouse_code,
+                    'BinAbsEntry': abs_entry,
+                    'BusinessPlaceID': business_place_id,
+                    'SystemNumber': system_number,
+                    'DocEntry': doc_entry,
+                    'Status': status,
+                    'AdmissionDate': admission_date,
+                    'ExpirationDate': expiration_date,
+                    'ExpiryDate': expiration_date,
+                    'IsSystemBin': is_system_bin,
+                    'DefaultBin': default_bin
+                }
+                
+                formatted_items.append(formatted_item)
+                logging.debug(f"✅ Added item: {item_code} - {item_description} (Batch: {batch_number})")
 
-                # Process batches for this item
-                for batch in batches:
-
-                    formatted_items.append({
-                        'ItemCode': item_code,
-                        'ItemName': item_name,
-                        'BatchNumber': batch.get('BatchNumber', ''),
-                        'BinCode': bin_code,
-                        'WarehouseCode': warehouse_code,
-                        'BinAbsEntry': abs_entry,
-                        'BusinessPlaceID': stock_data[0].get('BusinessPlaceID', 0) if stock_data else 0,
-                        'Status': 'Released',
-                        'ExpirationDate': '',
-                        'ExpiryDate': ''
-                    })
-
-            logging.info(
-                f"Formatted {len(formatted_items)} items for bin {bin_code}")
+            logging.info(f"🎯 Successfully formatted {len(formatted_items)} items for bin {bin_code}")
+            print(f"🎯 Successfully formatted {len(formatted_items)} items for bin {bin_code}")
+            
             return formatted_items
 
         except Exception as e:
-            logging.error(f"Error fetching items for bin {bin_code}: {str(e)}")
+            logging.error(f"❌ Error fetching items for bin {bin_code}: {str(e)}")
+            print(f"❌ Error fetching items for bin {bin_code}: {str(e)}")
             return []
 
     def get_available_bins(self, warehouse_code):
