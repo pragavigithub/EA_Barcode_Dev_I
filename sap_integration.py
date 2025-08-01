@@ -424,11 +424,12 @@ class SAPIntegration:
                 
                 try:
                     # Get item warehouse stock information
-                    stock_url = f"{self.base_url}/b1s/v1/ItemWhsStocks?$filter=ItemCode eq '{item_code}' and WhsCode eq '{warehouse_code}'"
+                    stock_url = f"{self.base_url}/b1s/v1/Items?$filter=ItemCode eq '{item_code}'"
                     stock_response = self.session.get(stock_url)
-                    
+                    print("stock_response-->"+stock_response)
                     if stock_response.status_code == 200:
                         stock_data = stock_response.json().get('value', [])
+                        print("stock_data->"+stock_data)
                         if stock_data:
                             stock_info = stock_data[0]
                             on_hand_qty = stock_info.get('OnHand', 0)
