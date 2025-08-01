@@ -374,13 +374,14 @@ class SAPIntegration:
 
             # Step 3: Get warehouse items using your exact crossjoin API pattern
             crossjoin_url = (f"{self.base_url}/b1s/v1/$crossjoin(Items,Items/ItemWarehouseInfoCollection)?"
-                           f"$expand=Items($select=ItemCode,ItemName,InventoryUoM,QuantityOnStock),"
+                           f"$expand=Items($select=ItemCode,ItemName,QuantityOnStock),"
                            f"Items/ItemWarehouseInfoCollection($select=InStock,Ordered,StandardAveragePrice)&"
                            f"$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and "
                            f"Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
-            
+
             logging.debug(f"[DEBUG] Calling URL: {crossjoin_url}")
-            crossjoin_response = self.session.get(crossjoin_url)
+            headers = {"Prefer": "odata.maxpagesize=300"}
+            crossjoin_response = self.session.get(crossjoin_url,headers=headers)
             logging.debug(f"[DEBUG] Status code: {crossjoin_response.status_code}")
             logging.debug(f"[DEBUG] Response text: {crossjoin_response.text[:300]}")
 
