@@ -398,31 +398,58 @@ class SAPIntegration:
             print(
                 f"Found {len(stock_data)} items with stock in warehouse {warehouse_code}"
             )
-            # Step 3: Get items with stock in the warehouse using ItemWhsStock 
-            # This replaces the complex $crossjoin query with a simpler approach
-            item_stock_url = f"{self.base_url}/b1s/v1/ItemWhsStock?$filter=WarehouseCode eq '{warehouse_code}' and OnHand gt 0"
-            logging.info(f"Fetching item stock data: {item_stock_url}")
+            # Step 3: Get items with warehouse stock using proper SAP B1 Items API
+            # Convert the $crossjoin query to Python format by making separate API calls
             
-            item_response = self.session.get(item_stock_url)
-            print(f"Item stock URL: {item_stock_url}")
-            print(f"Item stock response status: {item_response.status_code}")
+            # First, get all items with their warehouse info
+            items_url = f"{self.base_url}/b1s/v1/Items?$expand=ItemWarehouseInfoCollection&$select=ItemCode,ItemName,UoMGroupEntry"
+            logging.info(f"Fetching items with warehouse info: {items_url}")
             
-            if item_response.status_code != 200:
-                logging.error(f"Failed to get item stock: {item_response.status_code} - {item_response.text}")
+            items_response = self.session.get(items_url)
+            print(f"Items URL: {items_url}")
+            print(f"Items response status: {items_response.status_code}")
+            
+            if items_response.status_code != 200:
+                logging.error(f"Failed to get items: {items_response.status_code} - {items_response.text}")
                 return []
 
-            item_data = item_response.json().get('value', [])
+            all_items_data = items_response.json().get('value', [])
+            logging.info(f"Retrieved {len(all_items_data)} items from SAP B1")
+            
+            # Filter items that have stock in the specified warehouse
+            # This replaces the complex $crossjoin with Python filtering
+            item_data = []
+            for item in all_items_data:
+                warehouse_info = item.get('ItemWarehouseInfoCollection', [])
+                for wh_info in warehouse_info:
+                    if (wh_info.get('WarehouseCode') == warehouse_code and 
+                        wh_info.get('InStock', 0) > 0):
+                        # Combine item and warehouse data
+                        combined_item = {
+                            'ItemCode': item.get('ItemCode'),
+                            'ItemName': item.get('ItemName'),
+                            'UoMGroupEntry': item.get('UoMGroupEntry'),
+                            'WarehouseCode': wh_info.get('WarehouseCode'),
+                            'InStock': wh_info.get('InStock', 0),
+                            'OnHand': wh_info.get('InStock', 0),  # Map InStock to OnHand for compatibility
+                            'Ordered': wh_info.get('Ordered', 0),
+                            'StandardAveragePrice': wh_info.get('StandardAveragePrice', 0)
+                        }
+                        item_data.append(combined_item)
+                        break  # Only take first matching warehouse
+            
             logging.info(f"Found {len(item_data)} items with stock in warehouse {warehouse_code}")
             print(f"Found {len(item_data)} items with stock in warehouse {warehouse_code}")
 
 
-            # Step 4: Process item stock data and get batch information
+            # Step 4: Process filtered item data and get batch information
             formatted_items = []
             for stock_item in item_data[:10]:  # Limit to first 10 items for performance
                 item_code = stock_item.get('ItemCode', '')
-                on_hand_qty = stock_item.get('OnHand', 0)
+                item_name = stock_item.get('ItemName', '')
+                in_stock_qty = stock_item.get('InStock', 0)
                 
-                if not item_code or on_hand_qty <= 0:
+                if not item_code or in_stock_qty <= 0:
                     continue
 
                 # Get batch information for this item
@@ -439,11 +466,12 @@ class SAPIntegration:
                             for batch_info in batch_data[:3]:  # Limit to 3 batches per item
                                 formatted_items.append({
                                     'ItemCode': item_code,
-                                    'ItemName': batch_info.get('ItemDescription', ''),
+                                    'ItemName': item_name or batch_info.get('ItemDescription', ''),
                                     'Batch': batch_info.get('Batch', ''),
                                     'BatchNumber': batch_info.get('Batch', ''),
-                                    'Quantity': on_hand_qty,
-                                    'OnHand': on_hand_qty,
+                                    'Quantity': in_stock_qty,
+                                    'OnHand': in_stock_qty,
+                                    'InStock': in_stock_qty,
                                     'ExpirationDate': batch_info.get('ExpirationDate', ''),
                                     'ExpiryDate': batch_info.get('ExpirationDate', ''),
                                     'UoM': 'EA',  # Default UoM
@@ -452,25 +480,15 @@ class SAPIntegration:
                                     'Status': batch_info.get('Status', 'bdsStatus_Released')
                                 })
                         else:
-                            # No batch info, add item without batch
-                            # Get item master data for item name
-                            item_master_url = f"{self.base_url}/b1s/v1/Items('{item_code}')?$select=ItemCode,ItemName"
-                            try:
-                                item_master_response = self.session.get(item_master_url)
-                                item_name = item_code  # Default fallback
-                                if item_master_response.status_code == 200:
-                                    item_master = item_master_response.json()
-                                    item_name = item_master.get('ItemName', item_code)
-                            except:
-                                item_name = item_code
-                                
+                            # No batch info, add item without batch (item_name already available)
                             formatted_items.append({
                                 'ItemCode': item_code,
-                                'ItemName': item_name,
+                                'ItemName': item_name or item_code,
                                 'Batch': '',
                                 'BatchNumber': '',
-                                'Quantity': on_hand_qty,
-                                'OnHand': on_hand_qty,
+                                'Quantity': in_stock_qty,
+                                'OnHand': in_stock_qty,
+                                'InStock': in_stock_qty,
                                 'ExpirationDate': '',
                                 'ExpiryDate': '',
                                 'UoM': 'EA',
@@ -484,11 +502,12 @@ class SAPIntegration:
                     # Add item without batch info as fallback
                     formatted_items.append({
                         'ItemCode': item_code,
-                        'ItemName': item_code,  # Use item code as name
+                        'ItemName': item_name or item_code,
                         'Batch': '',
                         'BatchNumber': '',
-                        'Quantity': on_hand_qty,
-                        'OnHand': on_hand_qty,
+                        'Quantity': in_stock_qty,
+                        'OnHand': in_stock_qty,
+                        'InStock': in_stock_qty,
                         'ExpirationDate': '',
                         'ExpiryDate': '',
                         'UoM': 'EA',
