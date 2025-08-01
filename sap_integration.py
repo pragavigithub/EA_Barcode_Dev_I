@@ -398,110 +398,103 @@ class SAPIntegration:
             print(
                 f"Found {len(stock_data)} items with stock in warehouse {warehouse_code}"
             )
-            # Step 3: Get batch details for items (using your API example)
-
-            item_url = (f"{self.base_url}/b1s/v1/Items/$crossjoin(Items,Items/ItemWarehouseInfoCollection)?$expand=Items($select=ItemCode,UoMGroupEntry)"
-                         f",Items/ItemWarehouseInfoCollection($select=InStock,Ordered,StandardAveragePrice)"
-                         f"&$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
-            item_response = self.session.get(item_url)
-            print(item_url)
-            print(item_response)
+            # Step 3: Get items with stock in the warehouse using ItemWhsStock 
+            # This replaces the complex $crossjoin query with a simpler approach
+            item_stock_url = f"{self.base_url}/b1s/v1/ItemWhsStock?$filter=WarehouseCode eq '{warehouse_code}' and OnHand gt 0"
+            logging.info(f"Fetching item stock data: {item_stock_url}")
+            
+            item_response = self.session.get(item_stock_url)
+            print(f"Item stock URL: {item_stock_url}")
+            print(f"Item stock response status: {item_response.status_code}")
+            
             if item_response.status_code != 200:
-                logging.error(
-                    f"Failed to get warehouse stock: {stock_response.status_code}"
-                )
+                logging.error(f"Failed to get item stock: {item_response.status_code} - {item_response.text}")
                 return []
 
             item_data = item_response.json().get('value', [])
-            print("item_data"+item_data)
-            logging.info(
-                f"Found {len(item_data)} items with stock in warehouse {warehouse_code}"
-            )
-            print(
-                f"Found {len(item_data)} items with stock in warehouse {warehouse_code}"
-            )
+            logging.info(f"Found {len(item_data)} items with stock in warehouse {warehouse_code}")
+            print(f"Found {len(item_data)} items with stock in warehouse {warehouse_code}")
 
 
-            #step 4
+            # Step 4: Process item stock data and get batch information
             formatted_items = []
-            for stock_item in stock_data[:
-                                         10]:  # Limit to first 10 items for performance
-                default_Bin = stock_item.get('DefaultBin', '')
-                if not default_Bin:
+            for stock_item in item_data[:10]:  # Limit to first 10 items for performance
+                item_code = stock_item.get('ItemCode', '')
+                on_hand_qty = stock_item.get('OnHand', 0)
+                
+                if not item_code or on_hand_qty <= 0:
                     continue
 
                 # Get batch information for this item
-                batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=SystemNumber eq {default_Bin} and Status eq 'bdsStatus_Released'"
-                print(batch_url)
+                batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=ItemCode eq '{item_code}' and Status eq 'bdsStatus_Released'"
+                logging.info(f"Getting batch info for item {item_code}: {batch_url}")
+                
                 try:
                     batch_response = self.session.get(batch_url)
                     if batch_response.status_code == 200:
                         batch_data = batch_response.json().get('value', [])
-                        print(batch_data)
+                        
                         if batch_data:
-                            # Use first available batch
-                            batch_info = batch_data[0]
-                            formatted_items.append({
-                                'ItemCode':
-                                batch_info.get('ItemCode'),
-                                'ItemName':
-                                batch_info.get('ItemDescription'),
-                                'Batch':
-                                batch_info.get('Batch'),
-                                'ExpirationDate':
-                                batch_info.get('ExpirationDate', 0),
-                                'UoM':
-                                'EA',  # Default UoM, could be enhanced with item master data
-                                'BatchNumber':
-                                batch_info.get('Batch', ''),
-                                'ExpiryDate':
-                                batch_info.get('ExpirationDate', ''),
-                                'BinCode':
-                                bin_code,
-                                'WarehouseCode':
-                                warehouse_code
-                            })
+                            # Add all available batches for this item
+                            for batch_info in batch_data[:3]:  # Limit to 3 batches per item
+                                formatted_items.append({
+                                    'ItemCode': item_code,
+                                    'ItemName': batch_info.get('ItemDescription', ''),
+                                    'Batch': batch_info.get('Batch', ''),
+                                    'BatchNumber': batch_info.get('Batch', ''),
+                                    'Quantity': on_hand_qty,
+                                    'OnHand': on_hand_qty,
+                                    'ExpirationDate': batch_info.get('ExpirationDate', ''),
+                                    'ExpiryDate': batch_info.get('ExpirationDate', ''),
+                                    'UoM': 'EA',  # Default UoM
+                                    'BinCode': bin_code,
+                                    'WarehouseCode': warehouse_code,
+                                    'Status': batch_info.get('Status', 'bdsStatus_Released')
+                                })
                         else:
                             # No batch info, add item without batch
+                            # Get item master data for item name
+                            item_master_url = f"{self.base_url}/b1s/v1/Items('{item_code}')?$select=ItemCode,ItemName"
+                            try:
+                                item_master_response = self.session.get(item_master_url)
+                                item_name = item_code  # Default fallback
+                                if item_master_response.status_code == 200:
+                                    item_master = item_master_response.json()
+                                    item_name = item_master.get('ItemName', item_code)
+                            except:
+                                item_name = item_code
+                                
                             formatted_items.append({
-                                'ItemCode':
-                                batch_info.get('ItemCode'),
-                                'ItemName':
-                                batch_info.get('ItemDescription'),
-                                'Batch':
-                                batch_info.get('Batch'),
-                                'ExpirationDate':
-                                batch_info.get('ExpirationDate', 0),
-                                'BatchNumber':
-                                batch_info.get('Batch', ''),
-                                'ExpiryDate':
-                                batch_info.get('ExpirationDate', ''),
-                                'BinCode':
-                                bin_code,
-                                'WarehouseCode':
-                                warehouse_code
+                                'ItemCode': item_code,
+                                'ItemName': item_name,
+                                'Batch': '',
+                                'BatchNumber': '',
+                                'Quantity': on_hand_qty,
+                                'OnHand': on_hand_qty,
+                                'ExpirationDate': '',
+                                'ExpiryDate': '',
+                                'UoM': 'EA',
+                                'BinCode': bin_code,
+                                'WarehouseCode': warehouse_code,
+                                'Status': 'No Batch'
                             })
 
                 except Exception as batch_error:
-                    logging.warning(
-                        f"Could not get batch info for {default_Bin}: {batch_error}"
-                    )
-                    # Add item without batch info
+                    logging.warning(f"Could not get batch info for item {item_code}: {batch_error}")
+                    # Add item without batch info as fallback
                     formatted_items.append({
-                        'ItemCode':
-                        batch_info.get('ItemCode'),
-                        'ItemName':
-                        batch_info.get('ItemDescription'),
-                        'Quantity':
-                        stock_item.get('OnHand', 0),
-                        'BatchNumber':
-                        '',
-                        'ExpiryDate':
-                        '',
-                        'BinCode':
-                        bin_code,
-                        'WarehouseCode':
-                        warehouse_code
+                        'ItemCode': item_code,
+                        'ItemName': item_code,  # Use item code as name
+                        'Batch': '',
+                        'BatchNumber': '',
+                        'Quantity': on_hand_qty,
+                        'OnHand': on_hand_qty,
+                        'ExpirationDate': '',
+                        'ExpiryDate': '',
+                        'UoM': 'EA',
+                        'BinCode': bin_code,
+                        'WarehouseCode': warehouse_code,
+                        'Status': 'Error getting batch info'
                     })
 
             logging.info(
