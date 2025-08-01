@@ -89,6 +89,12 @@ with app.app_context():
     # Import models to create tables
     import models
     import models_extensions
+    
+    # Initialize dual database support
+    from db_dual_support import init_dual_database
+    dual_db = init_dual_database(app)
+    logging.info("🔄 Dual database support initialized")
+    
     # Import api_batch_management later to avoid circular imports
 # import api_batch_management
     db.create_all()

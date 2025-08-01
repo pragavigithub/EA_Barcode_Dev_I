@@ -1,139 +1,128 @@
 """
-Dual Database Support for WMS - Replit + MySQL Integration
-This module provides dual database write functionality to maintain MySQL consistency
-while running on Replit's SQLite environment.
+Dual Database Support Module
+Handles both SQLite (for Replit) and MySQL (for local development) synchronization
 """
 
 import os
 import logging
-from contextlib import contextmanager
-import pymysql
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+import json
+from datetime import datetime
 
 class DualDatabaseManager:
-    """Manages dual writes to both SQLite (Replit) and MySQL (original) databases"""
+    """Manages dual database support for SQLite and MySQL"""
     
-    def __init__(self, app=None):
+    def __init__(self, app):
+        self.app = app
+        self.sqlite_engine = None
         self.mysql_engine = None
-        self.mysql_session_factory = None
-        self.app = app
-        self.mysql_enabled = False
+        self.setup_engines()
+    
+    def setup_engines(self):
+        """Setup both SQLite and MySQL engines"""
+        # SQLite engine (primary for Replit)
+        sqlite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'wms.db')
+        self.sqlite_engine = create_engine(f"sqlite:///{sqlite_path}")
         
-        if app:
-            self.init_app(app)
-    
-    def init_app(self, app):
-        """Initialize with Flask app"""
-        self.app = app
-        self._setup_mysql_connection()
-    
-    def _setup_mysql_connection(self):
-        """Setup MySQL connection using environment variables"""
+        # MySQL engine (for local development sync)
+        mysql_config = {
+            'host': os.environ.get('MYSQL_HOST', 'localhost'),
+            'port': os.environ.get('MYSQL_PORT', '3306'),
+            'user': os.environ.get('MYSQL_USER', 'root'),
+            'password': os.environ.get('MYSQL_PASSWORD', 'root@123'),
+            'database': os.environ.get('MYSQL_DATABASE', 'wms_db_dev')
+        }
+        
         try:
-            mysql_host = os.environ.get('MYSQL_HOST', 'localhost')
-            mysql_user = os.environ.get('MYSQL_USER', 'root')
-            mysql_password = os.environ.get('MYSQL_PASSWORD', '')
-            mysql_database = os.environ.get('MYSQL_DATABASE', 'wms_db_dev')
-            mysql_port = int(os.environ.get('MYSQL_PORT', '3306'))
-            
-            if mysql_host and mysql_user and mysql_database:
-                mysql_url = f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}"
-                
-                self.mysql_engine = create_engine(
-                    mysql_url,
-                    pool_pre_ping=True,
-                    pool_recycle=300,
-                    echo=False  # Set to True for SQL debugging
-                )
-                
-                # Test connection
-                with self.mysql_engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                
-                self.mysql_session_factory = sessionmaker(bind=self.mysql_engine)
-                self.mysql_enabled = True
-                
-                logging.info("✅ MySQL dual database support enabled")
-                
+            mysql_url = f"mysql+pymysql://{mysql_config['user']}:{mysql_config['password']}@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}"
+            self.mysql_engine = create_engine(mysql_url)
+            logging.info("✅ MySQL engine configured for dual database support")
         except Exception as e:
-            logging.warning(f"⚠️ MySQL dual database support disabled: {e}")
-            self.mysql_enabled = False
+            logging.warning(f"⚠️ MySQL engine setup failed: {e}. Operating in SQLite-only mode.")
+            self.mysql_engine = None
     
-    @contextmanager
-    def mysql_session(self):
-        """Context manager for MySQL database sessions"""
-        if not self.mysql_enabled:
-            yield None
+    def sync_to_mysql(self, table_name, operation, data=None, where_clause=None):
+        """Synchronize changes to MySQL database"""
+        if not self.mysql_engine:
+            logging.debug(f"MySQL not available, skipping sync for {table_name}")
             return
-            
-        session = self.mysql_session_factory()
-        try:
-            yield session
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            logging.error(f"MySQL session error: {e}")
-            raise
-        finally:
-            session.close()
-    
-    def execute_mysql_query(self, query, params=None):
-        """Execute a raw MySQL query"""
-        if not self.mysql_enabled:
-            return None
-            
+        
+        if not data and operation in ['INSERT', 'UPDATE']:
+            logging.warning(f"No data provided for {operation} operation on {table_name}")
+            return
+        
         try:
             with self.mysql_engine.connect() as conn:
-                result = conn.execute(text(query), params or {})
+                if operation == 'INSERT' and data:
+                    # Build INSERT statement
+                    columns = ', '.join(data.keys())
+                    placeholders = ', '.join([f":{key}" for key in data.keys()])
+                    sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+                    conn.execute(text(sql), data)
+                    
+                elif operation == 'UPDATE' and data:
+                    # Build UPDATE statement
+                    set_clause = ', '.join([f"{key} = :{key}" for key in data.keys()])
+                    sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+                    conn.execute(text(sql), data)
+                    
+                elif operation == 'DELETE':
+                    # Build DELETE statement
+                    sql = f"DELETE FROM {table_name} WHERE {where_clause}"
+                    conn.execute(text(sql), data or {})
+                
                 conn.commit()
-                return result
+                logging.debug(f"✅ Synced {operation} to MySQL: {table_name}")
+                
+        except SQLAlchemyError as e:
+            logging.error(f"❌ MySQL sync failed for {table_name}: {e}")
         except Exception as e:
-            logging.error(f"MySQL query execution failed: {e}")
-            return None
+            logging.error(f"❌ Unexpected error during MySQL sync: {e}")
     
-    def sync_record_to_mysql(self, table_name, record_data, operation='insert'):
-        """Sync a single record to MySQL database"""
-        if not self.mysql_enabled:
-            return False
-            
-        try:
-            if operation == 'insert':
-                columns = ', '.join(record_data.keys())
-                placeholders = ', '.join([f':{key}' for key in record_data.keys()])
-                query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
-                
-            elif operation == 'update':
-                set_clause = ', '.join([f"{key} = :{key}" for key in record_data.keys() if key != 'id'])
-                query = f"UPDATE {table_name} SET {set_clause} WHERE id = :id"
-                
-            elif operation == 'delete':
-                query = f"DELETE FROM {table_name} WHERE id = :id"
-                
-            result = self.execute_mysql_query(query, record_data)
-            return result is not None
-            
-        except Exception as e:
-            logging.error(f"Failed to sync {operation} to MySQL for table {table_name}: {e}")
-            return False
-    
-    def bulk_sync_to_mysql(self, table_name, records, operation='insert'):
-        """Bulk sync multiple records to MySQL"""
-        if not self.mysql_enabled or not records:
-            return False
-            
-        success_count = 0
-        for record in records:
-            if self.sync_record_to_mysql(table_name, record, operation):
-                success_count += 1
-                
-        logging.info(f"✅ Synced {success_count}/{len(records)} records to MySQL table {table_name}")
-        return success_count == len(records)
+    def execute_dual_query(self, sql, params=None):
+        """Execute query on both databases"""
+        results = {'sqlite': [], 'mysql': []}
+        
+        # Execute on SQLite
+        if self.sqlite_engine:
+            try:
+                with self.sqlite_engine.connect() as conn:
+                    result = conn.execute(text(sql), params or {})
+                    if result.returns_rows:
+                        results['sqlite'] = result.fetchall()
+                    else:
+                        results['sqlite'] = result.rowcount
+            except Exception as e:
+                logging.error(f"SQLite query failed: {e}")
+        
+        # Execute on MySQL if available
+        if self.mysql_engine:
+            try:
+                with self.mysql_engine.connect() as conn:
+                    result = conn.execute(text(sql), params or {})
+                    if result.returns_rows:
+                        results['mysql'] = result.fetchall()
+                    else:
+                        results['mysql'] = result.rowcount
+                    conn.commit()
+            except Exception as e:
+                logging.error(f"MySQL query failed: {e}")
+        
+        return results
 
 # Global instance
-dual_db = DualDatabaseManager()
+dual_db_manager = None
 
 def init_dual_database(app):
-    """Initialize dual database support with Flask app"""
-    dual_db.init_app(app)
-    return dual_db
+    """Initialize dual database support"""
+    global dual_db_manager
+    dual_db_manager = DualDatabaseManager(app)
+    return dual_db_manager
+
+def sync_model_change(model_name, operation, data, where_clause=None):
+    """Helper function to sync model changes"""
+    if dual_db_manager:
+        # Convert SQLAlchemy model name to table name
+        table_name = model_name.lower() + 's' if not model_name.endswith('s') else model_name.lower()
+        dual_db_manager.sync_to_mysql(table_name, operation, data, where_clause)
