@@ -405,8 +405,8 @@ class SAPIntegration:
             # First, get batch numbers in this bin to identify items
             batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails"
             batch_params = {
-                '$filter': f"BinAbs eq {abs_entry}",
-                '$select': 'ItemCode,BatchNumber,Quantity,BinAbs,WhsCode'
+                '$filter': f"SystemNumber eq {abs_entry}",
+                '$select': 'ItemCode,Batch'
             }
             
             logging.info(f"Fetching batch items in bin: {batch_url}")
@@ -443,13 +443,15 @@ class SAPIntegration:
                     continue
                     
                 # Get item details from Items API
-                item_detail_url = f"{self.base_url}/b1s/v1/Items('{item_code}')?$select=ItemCode,ItemName,UoMGroupEntry"
-                
+                item_detail_url = f"{self.base_url}/b1s/v1/Items('{item_code}')?$select=ItemCode,ItemName,QuantityOnStock"
+
                 try:
                     item_response = self.session.get(item_detail_url)
                     if item_response.status_code == 200:
                         item_detail = item_response.json()
+                        print(item_detail)
                         item_name = item_detail.get('ItemName', item_code)
+                        onStock=item_detail.get('QuantityOnStock')
                     else:
                         item_name = item_code  # Fallback to item code if detail fetch fails
                 except:
@@ -460,15 +462,11 @@ class SAPIntegration:
 
                 # Process batches for this item
                 for batch in batches:
-                    batch_qty = batch.get('Quantity', 0)
+
                     formatted_items.append({
                         'ItemCode': item_code,
                         'ItemName': item_name,
                         'BatchNumber': batch.get('BatchNumber', ''),
-                        'Quantity': batch_qty,
-                        'OnHand': batch_qty,
-                        'OnStock': batch_qty,
-                        'UoM': 'EA',  # Default UoM
                         'BinCode': bin_code,
                         'WarehouseCode': warehouse_code,
                         'BinAbsEntry': abs_entry,
