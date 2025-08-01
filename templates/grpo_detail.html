@@ -413,6 +413,7 @@
 </div>
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
 // Global variables - prevent duplicate declarations
 if (typeof selectedPoItemData === 'undefined') {
@@ -1160,6 +1161,76 @@ function postToSAPConfirm(button) {
     return false;
 }
 
+// QR Code Generation Functions
+let currentQRData = {};
+
+function generateQRLabel(itemCode, itemName, batchNumber, grpoId, poNumber) {
+    currentQRData = {
+        item_code: itemCode,
+        item_name: itemName,
+        batch_number: batchNumber || null,
+        po_number: poNumber,
+        format: 'TEXT'
+    };
+    
+    generateQRCodeAPI();
+    
+    const modal = new bootstrap.Modal(document.getElementById('qrCodeModal'));
+    modal.show();
+}
+
+function generateQRCodeAPI() {
+    fetch('/api/generate-qr-code', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(currentQRData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayQRCode(data.qr_content);
+        } else {
+            console.error('QR code generation failed:', data.error);
+            document.getElementById('qrCodeContainer').innerHTML = '<p class="text-danger">Error generating QR code</p>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('qrCodeContainer').innerHTML = '<p class="text-danger">Error generating QR code</p>';
+    });
+}
+
+function displayQRCode(content) {
+    const container = document.getElementById('qrCodeContainer');
+    const textContainer = document.getElementById('qrCodeText');
+    
+    // Display QR code content as text
+    textContainer.innerHTML = '<pre>' + content + '</pre>';
+    
+    // Generate visual QR code if QRCode library is available
+    if (typeof QRCode !== 'undefined') {
+        QRCode.toCanvas(container, content, { width: 200, height: 200 }, function (error, canvas) {
+            if (error) {
+                console.error('QR Code generation error:', error);
+                container.innerHTML = '<div class="alert alert-info">QR Code: Visual generation failed, but text content is available below.</div>';
+            } else {
+                container.innerHTML = '';
+                container.appendChild(canvas);
+            }
+        });
+    } else {
+        container.innerHTML = '<div class="alert alert-info">QR Code content is ready for scanning (visual QR code requires QR library)</div>';
+    }
+}
+
+function regenerateQR() {
+    const format = document.getElementById('qrFormat').value;
+    currentQRData.format = format;
+    generateQRCodeAPI();
+}
+
 // Set up event listeners when page loads
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.add-item-btn').forEach(button => {
@@ -1182,5 +1253,53 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<!-- QR Code Label Modal -->
+<div class="modal fade" id="qrCodeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">QR Code Label</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <div id="qrCodeContainer" class="mb-3"></div>
+                    
+                    <div class="card">
+                        <div class="card-body">
+                            <div id="qrCodeText" class="text-start">
+                                <!-- QR code content will be displayed here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <label class="form-label">QR Format:</label>
+                        <select id="qrFormat" class="form-select" onchange="regenerateQR()">
+                            <option value="TEXT">Text Format</option>
+                            <option value="JSON">JSON Format</option>
+                            <option value="CSV">CSV Format</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button class="btn btn-secondary w-100" onclick="regenerateQR()">
+                            <i data-feather="refresh-cw"></i> Regenerate
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="printQRLabel()">
+                    <i data-feather="printer"></i> Print Label
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 {% endblock %}

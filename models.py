@@ -110,6 +110,7 @@ class User(UserMixin, db.Model):
                               foreign_keys='PickList.user_id')
     inventory_counts = relationship('InventoryCount', back_populates='user')
     bin_scanning_logs = relationship('BinScanningLog', back_populates='user')
+    qr_code_labels = relationship('QRCodeLabel', back_populates='user')
 
 
 class GRPODocument(db.Model):
@@ -176,6 +177,7 @@ class GRPOItem(db.Model):
 
     # Relationships
     grpo_document = relationship('GRPODocument', back_populates='items')
+    qr_code_labels = relationship('QRCodeLabel', back_populates='grpo_item')
 
 
 class InventoryTransfer(db.Model):
@@ -398,6 +400,69 @@ class BinScanningLog(db.Model):
     
     def __repr__(self):
         return f'<BinScanningLog {self.bin_code} by {self.user_id}>'
+
+
+class QRCodeLabel(db.Model):
+    __tablename__ = 'qr_code_labels'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    label_type = db.Column(db.String(50), nullable=False)  # GRN_ITEM, INVENTORY_ITEM, etc.
+    item_code = db.Column(db.String(100), nullable=False)
+    item_name = db.Column(db.String(200), nullable=True)
+    po_number = db.Column(db.String(100), nullable=True)
+    batch_number = db.Column(db.String(100), nullable=True)
+    warehouse_code = db.Column(db.String(50), nullable=True)
+    bin_code = db.Column(db.String(100), nullable=True)
+    quantity = db.Column(db.Numeric(15, 4), nullable=True)
+    uom = db.Column(db.String(20), nullable=True)
+    expiry_date = db.Column(db.Date, nullable=True)
+    
+    # QR Code content and metadata
+    qr_content = db.Column(db.Text, nullable=False)  # The actual string that gets encoded
+    qr_format = db.Column(db.String(20), default='TEXT')  # TEXT, JSON, CSV
+    
+    # Reference to source document
+    grpo_item_id = db.Column(db.Integer, db.ForeignKey('grpo_items.id'), nullable=True)
+    inventory_transfer_item_id = db.Column(db.Integer, db.ForeignKey('inventory_transfer_items.id'), nullable=True)
+    
+    # Audit fields
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship('User', back_populates='qr_code_labels')
+    grpo_item = relationship('GRPOItem', back_populates='qr_code_labels')
+    
+    def __repr__(self):
+        return f'<QRCodeLabel {self.label_type} - {self.item_code}>'
+    
+    @classmethod
+    def generate_grn_qr_content(cls, item_code, item_name, po_number, batch_number=None, format_type='TEXT'):
+        """Generate QR code content for GRN items"""
+        if format_type == 'JSON':
+            import json
+            content = json.dumps({
+                'type': 'GRN_ITEM',
+                'item_code': item_code,
+                'item_name': item_name,
+                'po_number': po_number,
+                'batch_number': batch_number or 'N/A',
+                'generated_at': datetime.utcnow().isoformat()
+            })
+        elif format_type == 'CSV':
+            content = f"GRN_ITEM,{item_code},{item_name},{po_number},{batch_number or 'N/A'}"
+        else:  # TEXT format
+            lines = [
+                f"Item Code: {item_code}",
+                f"Item Name: {item_name}",
+                f"PO Number: {po_number}"
+            ]
+            if batch_number:
+                lines.append(f"Batch Number: {batch_number}")
+            content = '\n'.join(lines)
+        
+        return content
 
 
 class DocumentNumberSeries(db.Model):

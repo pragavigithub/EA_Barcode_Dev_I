@@ -40,6 +40,7 @@ Module priorities: PickList Module, GRPO Module, Inventory Transfer Module.
     - **Inventory Counting**: Cycle counting and physical inventory tasks.
     - **Bin Scanning**: Display all items in a specific bin location with real-time SAP data (OnHand/OnStock quantities, batch info).
 - **Barcode Management**: Generation for various formats (standard, custom), QR code generation with detailed item/document data (PO/Transfer number), and label reprinting.
+- **QR Code Generation**: Enhanced QR code functionality for GRN items with multiple format support (TEXT, JSON, CSV). Generates scannable QR codes containing item information (Item Code, Name, PO Number, Batch Number) that can be read by any QR scanner application. Includes QR code history tracking and database storage with dual MySQL migration support.
 - **Mobile Application (Native Android Java)**: Developed as a native Android app eliminating React Native dependencies. Features include offline-first architecture with local SQLite database, background synchronization, Material Design 3 UI, ZXing barcode scanning, Retrofit API integration, and Room database support. Implements GRPO, Inventory Transfer, and Pick List modules with full CRUD and QC approval workflows.
 
 ## External Dependencies

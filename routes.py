@@ -6,7 +6,7 @@ import logging
 import json
 
 from app import app, db, login_manager
-from models import User, GRPODocument, GRPOItem, InventoryTransfer, InventoryTransferItem, PickList, PickListItem, InventoryCount, InventoryCountItem, BarcodeLabel, BinScanningLog, DocumentNumberSeries
+from models import User, GRPODocument, GRPOItem, InventoryTransfer, InventoryTransferItem, PickList, PickListItem, InventoryCount, InventoryCountItem, BarcodeLabel, BinScanningLog, DocumentNumberSeries, QRCodeLabel
 from sap_integration import SAPIntegration
 
 # BinScanningLog is now imported above
@@ -1390,6 +1390,97 @@ def test_bin_scanning(bin_code):
             'success': False,
             'error': str(e),
             'message': f'Failed to scan bin {bin_code}'
+        })
+
+# QR Code Generation API Routes
+@app.route('/api/generate-qr-code', methods=['POST'])
+@login_required
+def generate_qr_code():
+    """Generate QR code for GRN items"""
+    try:
+        data = request.get_json()
+        
+        item_code = data.get('item_code')
+        item_name = data.get('item_name')
+        po_number = data.get('po_number')
+        batch_number = data.get('batch_number')
+        format_type = data.get('format', 'TEXT')
+        
+        if not all([item_code, item_name, po_number]):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: item_code, item_name, po_number'
+            })
+        
+        # Generate QR content
+        qr_content = QRCodeLabel.generate_grn_qr_content(
+            item_code=item_code,
+            item_name=item_name,
+            po_number=po_number,
+            batch_number=batch_number,
+            format_type=format_type
+        )
+        
+        # Save QR code label to database
+        qr_label = QRCodeLabel(
+            label_type='GRN_ITEM',
+            item_code=item_code,
+            item_name=item_name,
+            po_number=po_number,
+            batch_number=batch_number,
+            qr_content=qr_content,
+            qr_format=format_type,
+            user_id=current_user.id
+        )
+        
+        db.session.add(qr_label)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'qr_content': qr_content,
+            'qr_label_id': qr_label.id,
+            'format': format_type,
+            'message': 'QR code generated successfully'
+        })
+        
+    except Exception as e:
+        logging.error(f"QR code generation failed: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/qr-code-history')
+@login_required  
+def get_qr_code_history():
+    """Get QR code generation history for current user"""
+    try:
+        qr_labels = QRCodeLabel.query.filter_by(user_id=current_user.id).order_by(QRCodeLabel.created_at.desc()).limit(50).all()
+        
+        history = []
+        for label in qr_labels:
+            history.append({
+                'id': label.id,
+                'label_type': label.label_type,
+                'item_code': label.item_code,
+                'item_name': label.item_name,
+                'po_number': label.po_number,
+                'batch_number': label.batch_number,
+                'qr_format': label.qr_format,
+                'created_at': label.created_at.strftime('%Y-%m-%d %H:%M')
+            })
+        
+        return jsonify({
+            'success': True,
+            'history': history
+        })
+        
+    except Exception as e:
+        logging.error(f"Failed to get QR code history: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         })
 
 @app.route('/api/scan_bin', methods=['POST'])
