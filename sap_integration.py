@@ -424,7 +424,7 @@ class SAPIntegration:
                 
                 try:
                     # Get item warehouse stock information
-                    stock_url = f"{self.base_url}/b1s/v1/ItemWhsStocks?$filter=ItemCode eq '{item_code}' and WhsCode eq '{warehouse_code}'"
+                    stock_url = f"{self.base_url}/b1s/v1/Items?$filter=ItemCode eq '{item_code}' "
                     stock_response = self.session.get(stock_url)
                     print(f"Stock response status: {stock_response.status_code}")
                     
