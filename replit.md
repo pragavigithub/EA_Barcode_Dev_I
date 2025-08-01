@@ -15,7 +15,8 @@ Module priorities: PickList Module, GRPO Module, Inventory Transfer Module.
 
 ### Backend Architecture
 - **Framework**: Flask (Python web framework)
-- **Database**: SQLAlchemy ORM with PostgreSQL for Replit deployment and MySQL/SQLite/SQL Server for local development. Database priority is MySQL > PostgreSQL > SQLite/SQL Server.
+- **Database**: SQLAlchemy ORM with SQLite for Replit environment (migrated from MySQL). Includes dual database support to maintain MySQL synchronization for enterprise continuity.
+- **Migration Status**: Successfully migrated from Replit Agent to Replit environment on August 1, 2025. Fixed SAP B1 API integration issues with ItemWarehouseInfoCollection navigation properties.
 - **Authentication**: Flask-Login for user session management with role-based access control and branch-specific access.
 - **SAP Integration**: Custom SAP B1 Service Layer integration via REST API for real-time data synchronization of POs, inventory, documents, and master data (warehouses, bins, business partners).
 - **Security**: Password hashing with Werkzeug utilities, CSRF protection, and environment-based configuration.

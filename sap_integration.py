@@ -398,122 +398,84 @@ class SAPIntegration:
             print(
                 f"Found {len(stock_data)} items with stock in warehouse {warehouse_code}"
             )
-            # Step 3: Get items with warehouse stock using proper SAP B1 Items API
-            # Convert the $crossjoin query to Python format by making separate API calls
+            # Step 3: Get items using proper SAP B1 API without invalid navigation properties
+            # Fix: ItemWarehouseInfoCollection is not a valid navigation property
+            # Use separate API calls to get item data and warehouse stock information
             
-            # First, get all items with their warehouse info
-            items_url = f"{self.base_url}/b1s/v1/Items?$expand=ItemWarehouseInfoCollection&$select=ItemCode,ItemName,UoMGroupEntry"
-            logging.info(f"Fetching items with warehouse info: {items_url}")
+            # First, get batch numbers in this bin to identify items
+            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails"
+            batch_params = {
+                '$filter': f"BinAbs eq {abs_entry}",
+                '$select': 'ItemCode,BatchNumber,Quantity,BinAbs,WhsCode'
+            }
             
-            items_response = self.session.get(items_url)
-            print(f"Items URL: {items_url}")
-            print(f"Items response status: {items_response.status_code}")
+            logging.info(f"Fetching batch items in bin: {batch_url}")
+            print(f"Batch URL: {batch_url}")
+            print(f"Batch params: {batch_params}")
             
-            if items_response.status_code != 200:
-                logging.error(f"Failed to get items: {items_response.status_code} - {items_response.text}")
+            batch_response = self.session.get(batch_url, params=batch_params)
+            print(f"Batch response status: {batch_response.status_code}")
+            
+            if batch_response.status_code != 200:
+                logging.error(f"Failed to get batch items: {batch_response.status_code} - {batch_response.text}")
                 return []
 
-            all_items_data = items_response.json().get('value', [])
-            logging.info(f"Retrieved {len(all_items_data)} items from SAP B1")
+            batch_data = batch_response.json().get('value', [])
+            logging.info(f"Retrieved {len(batch_data)} batch entries from bin {bin_code}")
             
-            # Filter items that have stock in the specified warehouse
-            # This replaces the complex $crossjoin with Python filtering
-            item_data = []
-            for item in all_items_data:
-                warehouse_info = item.get('ItemWarehouseInfoCollection', [])
-                for wh_info in warehouse_info:
-                    if (wh_info.get('WarehouseCode') == warehouse_code and 
-                        wh_info.get('InStock', 0) > 0):
-                        # Combine item and warehouse data
-                        combined_item = {
-                            'ItemCode': item.get('ItemCode'),
-                            'ItemName': item.get('ItemName'),
-                            'UoMGroupEntry': item.get('UoMGroupEntry'),
-                            'WarehouseCode': wh_info.get('WarehouseCode'),
-                            'InStock': wh_info.get('InStock', 0),
-                            'OnHand': wh_info.get('InStock', 0),  # Map InStock to OnHand for compatibility
-                            'Ordered': wh_info.get('Ordered', 0),
-                            'StandardAveragePrice': wh_info.get('StandardAveragePrice', 0)
-                        }
-                        item_data.append(combined_item)
-                        break  # Only take first matching warehouse
+            # Get unique item codes from batch data
+            unique_items = {}
+            for batch in batch_data:
+                item_code = batch.get('ItemCode')
+                if item_code and item_code not in unique_items:
+                    unique_items[item_code] = []
+                if item_code:
+                    unique_items[item_code].append(batch)
             
-            logging.info(f"Found {len(item_data)} items with stock in warehouse {warehouse_code}")
-            print(f"Found {len(item_data)} items with stock in warehouse {warehouse_code}")
+            logging.info(f"Found {len(unique_items)} unique items in bin {bin_code}")
+            print(f"Found {len(unique_items)} unique items in bin {bin_code}")
 
 
-            # Step 4: Process filtered item data and get batch information
+            # Step 4: For each unique item, get detailed item information and format response
             formatted_items = []
-            for stock_item in item_data[:10]:  # Limit to first 10 items for performance
-                item_code = stock_item.get('ItemCode', '')
-                item_name = stock_item.get('ItemName', '')
-                in_stock_qty = stock_item.get('InStock', 0)
-                
-                if not item_code or in_stock_qty <= 0:
+            for item_code, batches in list(unique_items.items())[:10]:  # Limit to first 10 items for performance
+                if not item_code or not batches:
                     continue
-
-                # Get batch information for this item
-                batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=ItemCode eq '{item_code}' and Status eq 'bdsStatus_Released'"
-                logging.info(f"Getting batch info for item {item_code}: {batch_url}")
+                    
+                # Get item details from Items API
+                item_detail_url = f"{self.base_url}/b1s/v1/Items('{item_code}')?$select=ItemCode,ItemName,UoMGroupEntry"
                 
                 try:
-                    batch_response = self.session.get(batch_url)
-                    if batch_response.status_code == 200:
-                        batch_data = batch_response.json().get('value', [])
-                        
-                        if batch_data:
-                            # Add all available batches for this item
-                            for batch_info in batch_data[:3]:  # Limit to 3 batches per item
-                                formatted_items.append({
-                                    'ItemCode': item_code,
-                                    'ItemName': item_name or batch_info.get('ItemDescription', ''),
-                                    'Batch': batch_info.get('Batch', ''),
-                                    'BatchNumber': batch_info.get('Batch', ''),
-                                    'Quantity': in_stock_qty,
-                                    'OnHand': in_stock_qty,
-                                    'InStock': in_stock_qty,
-                                    'ExpirationDate': batch_info.get('ExpirationDate', ''),
-                                    'ExpiryDate': batch_info.get('ExpirationDate', ''),
-                                    'UoM': 'EA',  # Default UoM
-                                    'BinCode': bin_code,
-                                    'WarehouseCode': warehouse_code,
-                                    'Status': batch_info.get('Status', 'bdsStatus_Released')
-                                })
-                        else:
-                            # No batch info, add item without batch (item_name already available)
-                            formatted_items.append({
-                                'ItemCode': item_code,
-                                'ItemName': item_name or item_code,
-                                'Batch': '',
-                                'BatchNumber': '',
-                                'Quantity': in_stock_qty,
-                                'OnHand': in_stock_qty,
-                                'InStock': in_stock_qty,
-                                'ExpirationDate': '',
-                                'ExpiryDate': '',
-                                'UoM': 'EA',
-                                'BinCode': bin_code,
-                                'WarehouseCode': warehouse_code,
-                                'Status': 'No Batch'
-                            })
+                    item_response = self.session.get(item_detail_url)
+                    if item_response.status_code == 200:
+                        item_detail = item_response.json()
+                        item_name = item_detail.get('ItemName', item_code)
+                    else:
+                        item_name = item_code  # Fallback to item code if detail fetch fails
+                except:
+                    item_name = item_code
+                
+                # Calculate total quantity from all batches
+                total_quantity = sum(batch.get('Quantity', 0) for batch in batches)
 
-                except Exception as batch_error:
-                    logging.warning(f"Could not get batch info for item {item_code}: {batch_error}")
-                    # Add item without batch info as fallback
+                # Process batches for this item
+                for batch in batches:
+                    batch_qty = batch.get('Quantity', 0)
                     formatted_items.append({
                         'ItemCode': item_code,
-                        'ItemName': item_name or item_code,
-                        'Batch': '',
-                        'BatchNumber': '',
-                        'Quantity': in_stock_qty,
-                        'OnHand': in_stock_qty,
-                        'InStock': in_stock_qty,
-                        'ExpirationDate': '',
-                        'ExpiryDate': '',
-                        'UoM': 'EA',
+                        'ItemName': item_name,
+                        'BatchNumber': batch.get('BatchNumber', ''),
+                        'Quantity': batch_qty,
+                        'OnHand': batch_qty,
+                        'OnStock': batch_qty,
+                        'UoM': 'EA',  # Default UoM
                         'BinCode': bin_code,
                         'WarehouseCode': warehouse_code,
-                        'Status': 'Error getting batch info'
+                        'BinAbsEntry': abs_entry,
+                        'BusinessPlaceID': stock_data[0].get('BusinessPlaceID', 0) if stock_data else 0,
+                        'Status': 'Released',
+                        'ExpirationDate': '',
+                        'ExpiryDate': ''
                     })
 
             logging.info(

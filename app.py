@@ -142,5 +142,15 @@ with app.app_context():
         db.session.rollback()
         # Continue with application startup
 
+# Initialize dual database support for MySQL sync
+try:
+    from db_dual_support import init_dual_database
+    dual_db = init_dual_database(app)
+    app.config['DUAL_DB'] = dual_db
+    logging.info("✅ Dual database support initialized")
+except Exception as e:
+    logging.warning(f"⚠️ Dual database support not available: {e}")
+    app.config['DUAL_DB'] = None
+
 # Import routes to register them
 import routes
