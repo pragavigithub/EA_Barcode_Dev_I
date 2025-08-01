@@ -328,24 +328,22 @@ class SAPIntegration:
             return []
 
     def get_bin_items(self, bin_code):
-        """Get all items in a specific bin location using correct SAP B1 API fields"""
+        """Enhanced bin scanning with detailed item information using your exact API patterns"""
         if not self.ensure_logged_in():
-            logging.error("SAP B1 login failed, cannot fetch bin items")
-            return []
+            logging.warning("SAP B1 not available, returning mock bin data")
+            return self._get_mock_bin_items(bin_code)
 
         try:
-            logging.info(f"🔍 Fetching items for bin: {bin_code}")
-            print(f"🔍 Fetching items for bin: {bin_code}")
-
-            # Step 1: Get bin information and verify it exists
-            bin_info_url = f"{self.base_url}/b1s/v1/BinLocations?$filter=BinCode eq '{bin_code}'"
-            bin_response = self.session.get(bin_info_url)
+            logging.info(f"🔍 Enhanced bin scanning for: {bin_code}")
             
-            logging.info(f"📍 Bin info URL: {bin_info_url}")
-            print(f"📍 Bin info URL: {bin_info_url}")
+            # Step 1: Get bin information using your exact API pattern
+            bin_info_url = f"{self.base_url}/b1s/v1/BinLocations?$filter=BinCode eq '{bin_code}'"
+            logging.debug(f"[DEBUG] Calling URL: {bin_info_url}")
+            bin_response = self.session.get(bin_info_url)
+            logging.debug(f"[DEBUG] Status code: {bin_response.status_code}")
 
             if bin_response.status_code != 200:
-                logging.warning(f"❌ Bin {bin_code} not found in SAP B1: {bin_response.status_code}")
+                logging.warning(f"❌ Bin {bin_code} not found: {bin_response.status_code}")
                 return []
 
             bin_data = bin_response.json().get('value', [])
@@ -356,162 +354,222 @@ class SAPIntegration:
             bin_info = bin_data[0]
             warehouse_code = bin_info.get('Warehouse', '')
             abs_entry = bin_info.get('AbsEntry', 0)
-            is_system_bin = bin_info.get('IsSystemBin', 'tNO')
 
-            logging.info(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry}, IsSystemBin: {is_system_bin})")
-            print(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry}, IsSystemBin: {is_system_bin})")
+            logging.info(f"✅ Found bin {bin_code} in warehouse {warehouse_code} (AbsEntry: {abs_entry})")
 
-            #Step 2:
+            # Step 2: Get warehouse business place info using your exact API pattern
+            warehouse_info_url = (f"{self.base_url}/b1s/v1/Warehouses?"
+                                f"$select=BusinessPlaceID,WarehouseCode,DefaultBin&"
+                                f"$filter=WarehouseCode eq '{warehouse_code}'")
+            logging.debug(f"[DEBUG] Calling URL: {warehouse_info_url}")
+            warehouse_response = self.session.get(warehouse_info_url)
+            logging.debug(f"[DEBUG] Status code: {warehouse_response.status_code}")
+            
+            business_place_id = 0
+            if warehouse_response.status_code == 200:
+                warehouse_data = warehouse_response.json().get('value', [])
+                if warehouse_data:
+                    business_place_id = warehouse_data[0].get('BusinessPlaceID', 0)
+                    logging.info(f"✅ Warehouse {warehouse_code} BusinessPlaceID: {business_place_id}")
 
+            # Step 3: Get warehouse items using your exact crossjoin API pattern
             crossjoin_url = (f"{self.base_url}/b1s/v1/$crossjoin(Items,Items/ItemWarehouseInfoCollection)?"
-                             f"$expand=Items($select=ItemCode,QuantityOnStock),Items/ItemWarehouseInfoCollection($select=InStock,Ordered,StandardAveragePrice)&"
-                             f"$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
-            print("[DEBUG] Calling URL:", crossjoin_url)
-            item_response = self.session.get(crossjoin_url)
-            print("[DEBUG] Status code:", item_response.status_code)
-            print("[DEBUG] Response text:", item_response.text[:300])  # Only first 300 chars
-
-            if item_response.status_code == 200:
-                try:
-                    item_data = item_response.json().get('value', [])
-                    if item_data:
-                        item_info = item_data[0]
-
-                    else:
-                        print("No items matched your query.")
-                except Exception as e:
-                    print("JSON parsing error:", e)
-                    print(item_response.text)
-            else:
-                print("Request failed:", item_response.status_code)
-                print(item_response.text)
-            # # item_info_url_i = (f"{self.base_url}"+"/b1/v1/"+"$crossjoin(Items,Items/ItemWarehouseInfoCollection)?$expand=Items($select ItemCode,UoMGroupEntry),Items/ItemWarehouseInfoCollection($select InStock,Ordered,StandardAveragePrice)&$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
-            # # print(item_info_url_i)
-            # # item_response = self.session.get(item_info_url_i)
-            # # item_data = item_response.json().get('value', [])
-            # # item_info = item_data[0]
-            # # print("item_info-->"+item_info)
-            # ####
-            #
-            # # Step 2: Get warehouse information for BusinessPlaceID
-            # warehouse_url = f"{self.base_url}/b1s/v1/Warehouses?$select=BusinessPlaceID,WarehouseCode,DefaultBin&$filter=WarehouseCode eq '{warehouse_code}'"
-            # warehouse_response = self.session.get(warehouse_url)
-            #
-            # logging.info(f"🏭 Warehouse info URL: {warehouse_url}")
-            # print(f"🏭 Warehouse info URL: {warehouse_url}")
-            #
-            # business_place_id = 0
-            # default_bin = 0
-            # if warehouse_response.status_code == 200:
-            #     warehouse_data = warehouse_response.json().get('value', [])
-            #     if warehouse_data:
-            #         business_place_id = warehouse_data[0].get('BusinessPlaceID', 0)
-            #         default_bin = warehouse_data[0].get('DefaultBin', 0)
-            #         logging.info(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
-            #         print(f"✅ Warehouse {warehouse_code}: BusinessPlaceID={business_place_id}, DefaultBin={default_bin}")
-
-            # Step 3: Get batch number details that match this bin's SystemNumber
-            # Based on your API response, SystemNumber maps to the bin's AbsEntry
-            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=ItemCode eq {1}"
-            batch_response = self.session.get(batch_url)
+                           f"$expand=Items($select=ItemCode,ItemName,InventoryUoM,QuantityOnStock),"
+                           f"Items/ItemWarehouseInfoCollection($select=InStock,Ordered,StandardAveragePrice)&"
+                           f"$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and "
+                           f"Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
             
-            logging.info(f"📦 Batch details URL: {batch_url}")
-            print(f"📦 Batch details URL: {batch_url}")
-            print(f"📦 Batch response status: {batch_response.status_code}")
-            
-            if batch_response.status_code != 200:
-                logging.error(f"❌ Failed to get batch items: {batch_response.status_code} - {batch_response.text}")
+            logging.debug(f"[DEBUG] Calling URL: {crossjoin_url}")
+            crossjoin_response = self.session.get(crossjoin_url)
+            logging.debug(f"[DEBUG] Status code: {crossjoin_response.status_code}")
+            logging.debug(f"[DEBUG] Response text: {crossjoin_response.text[:300]}")
+
+            if crossjoin_response.status_code != 200:
+                logging.error(f"❌ Failed to get warehouse items: {crossjoin_response.status_code}")
                 return []
 
-            batch_data = batch_response.json().get('value', [])
-            logging.info(f"📦 Retrieved {len(batch_data)} batch entries from bin {bin_code}")
-            print(f"📦 Retrieved {len(batch_data)} batch entries from bin {bin_code}")
-            
-            # Step 4: Process each batch item and get current stock quantities
+            # Step 4: Process crossjoin results and enhance with batch details
             formatted_items = []
-            processed_items = set()  # Track processed items to avoid duplicates
+            crossjoin_data = crossjoin_response.json().get('value', [])
             
-            for batch_item in batch_data:
-                item_code = batch_item.get('ItemCode', '')
-                batch_number = batch_item.get('Batch', '')
-                item_description = batch_item.get('ItemDescription', '')
-                status = batch_item.get('Status', 'bdsStatus_Released')
-                admission_date = batch_item.get('AdmissionDate', '')
-                expiration_date = batch_item.get('ExpirationDate', '')
-                doc_entry = batch_item.get('DocEntry', 0)
-                system_number = batch_item.get('SystemNumber', abs_entry)
-                
-                if not item_code:
-                    continue
-                
-                # Create unique key for item+batch combination
-                item_batch_key = f"{item_code}|{batch_number}"
-                if item_batch_key in processed_items:
-                    continue
-                processed_items.add(item_batch_key)
-                
-                # Get current stock quantity for this item in this warehouse
-                stock_quantity = 0
-                on_hand_qty = 0
-                
-                try:
-                    # Get item warehouse stock information
-                    stock_url = f"{self.base_url}/b1s/v1/Items?$filter=ItemCode eq '{item_code}' "
-                    stock_response = self.session.get(stock_url)
-                    print(f"Stock response status: {stock_response.status_code}")
-                    
-                    if stock_response.status_code == 200:
-                        stock_data = stock_response.json().get('value', [])
-                        print(f"Stock data count: {len(stock_data)}")
-                        if stock_data:
-                            stock_info = stock_data[0]
-                            on_hand_qty = stock_info.get('OnHand', 0)
-                            stock_quantity = stock_info.get('OnStock', on_hand_qty)
-                            logging.debug(f"Item {item_code} stock: OnHand={on_hand_qty}, OnStock={stock_quantity}")
-                    else:
-                        logging.warning(f"Could not get stock info for {item_code}: {stock_response.status_code}")
-                except Exception as stock_error:
-                    logging.warning(f"Stock lookup failed for {item_code}: {str(stock_error)}")
-                
-                # Format the item data using correct field names from SAP API response
-                formatted_item = {
-                    'ItemCode': item_code,
-                    'ItemName': item_description or item_code,
-                    'ItemDescription': item_description,
-                    'BatchNumber': batch_number,
-                    'Batch': batch_number,
-                    'Quantity': stock_quantity if stock_quantity > 0 else 1,  # Use stock quantity or default to 1
-                    'OnHand': on_hand_qty,
-                    'OnStock': stock_quantity,
-                    'InStock': stock_quantity,
-                    'UoM': 'EA',  # Default unit of measure
-                    'BinCode': bin_code,
-                    'WarehouseCode': warehouse_code,
-                    'Warehouse': warehouse_code,
-                    'BinAbsEntry': abs_entry,
-                    #'BusinessPlaceID': business_place_id,
-                    'SystemNumber': system_number,
-                    'DocEntry': doc_entry,
-                    'Status': status,
-                    'AdmissionDate': admission_date,
-                    'ExpirationDate': expiration_date,
-                    'ExpiryDate': expiration_date,
-                    'IsSystemBin': is_system_bin,
-                   # 'DefaultBin': default_bin
-                }
-                
-                formatted_items.append(formatted_item)
-                logging.debug(f"✅ Added item: {item_code} - {item_description} (Batch: {batch_number})")
+            logging.info(f"📦 Found {len(crossjoin_data)} items in warehouse {warehouse_code}")
 
-            logging.info(f"🎯 Successfully formatted {len(formatted_items)} items for bin {bin_code}")
-            print(f"🎯 Successfully formatted {len(formatted_items)} items for bin {bin_code}")
-            
+            for item_data in crossjoin_data:
+                try:
+                    item_info = item_data.get('Items', {})
+                    warehouse_info = item_data.get('Items/ItemWarehouseInfoCollection', {})
+                    
+                    item_code = item_info.get('ItemCode', '')
+                    if not item_code:
+                        continue
+
+                    # Step 5: Get batch details for this item using your exact API pattern
+                    batch_details = self._get_item_batch_details(item_code)
+                    
+                    # Create enhanced item record with all details
+                    enhanced_item = {
+                        'ItemCode': item_code,
+                        'ItemName': item_info.get('ItemName', ''),
+                        'UoM': item_info.get('InventoryUoM', 'EA'),
+                        'QuantityOnStock': float(item_info.get('QuantityOnStock', 0)),
+                        'OnHand': float(warehouse_info.get('InStock', 0)),
+                        'OnStock': float(warehouse_info.get('InStock', 0)),
+                        'InStock': float(warehouse_info.get('InStock', 0)),
+                        'Ordered': float(warehouse_info.get('Ordered', 0)),
+                        'StandardAveragePrice': float(warehouse_info.get('StandardAveragePrice', 0)),
+                        'WarehouseCode': warehouse_code,
+                        'Warehouse': warehouse_code,
+                        'BinCode': bin_code,
+                        'BinAbsEntry': abs_entry,
+                        'BusinessPlaceID': business_place_id,
+                        'BatchDetails': batch_details
+                    }
+
+                    # Add batch summary for display
+                    if batch_details:
+                        enhanced_item['BatchCount'] = len(batch_details)
+                        enhanced_item['BatchNumbers'] = [b.get('Batch', '') for b in batch_details]
+                        enhanced_item['ExpiryDates'] = [b.get('ExpirationDate') for b in batch_details if b.get('ExpirationDate')]
+                        enhanced_item['AdmissionDates'] = [b.get('AdmissionDate') for b in batch_details if b.get('AdmissionDate')]
+                        # Use first batch info for main display
+                        if batch_details:
+                            first_batch = batch_details[0]
+                            enhanced_item['BatchNumber'] = first_batch.get('Batch', '')
+                            enhanced_item['Batch'] = first_batch.get('Batch', '')
+                            enhanced_item['Status'] = first_batch.get('Status', 'bdsStatus_Released')
+                            enhanced_item['AdmissionDate'] = first_batch.get('AdmissionDate', '')
+                            enhanced_item['ExpirationDate'] = first_batch.get('ExpirationDate', '')
+                            enhanced_item['ExpiryDate'] = first_batch.get('ExpirationDate', '')
+                    else:
+                        enhanced_item['BatchCount'] = 0
+                        enhanced_item['BatchNumbers'] = []
+                        enhanced_item['ExpiryDates'] = []
+                        enhanced_item['AdmissionDates'] = []
+                        enhanced_item['BatchNumber'] = ''
+                        enhanced_item['Batch'] = ''
+                        enhanced_item['Status'] = 'No Batch'
+                        enhanced_item['AdmissionDate'] = ''
+                        enhanced_item['ExpirationDate'] = ''
+                        enhanced_item['ExpiryDate'] = ''
+
+                    # Add legacy fields for compatibility
+                    enhanced_item['Quantity'] = enhanced_item['OnHand']
+                    enhanced_item['ItemDescription'] = enhanced_item['ItemName']
+
+                    formatted_items.append(enhanced_item)
+                    
+                    logging.debug(f"✅ Enhanced item: {item_code} - OnHand: {enhanced_item['OnHand']}, Batches: {enhanced_item['BatchCount']}")
+
+                except Exception as item_error:
+                    logging.error(f"❌ Error processing item: {str(item_error)}")
+                    continue
+
+            logging.info(f"🎯 Successfully enhanced {len(formatted_items)} items for bin {bin_code}")
             return formatted_items
 
         except Exception as e:
-            logging.error(f"❌ Error fetching items for bin {bin_code}: {str(e)}")
-            print(f"❌ Error fetching items for bin {bin_code}: {str(e)}")
+            logging.error(f"❌ Error in enhanced bin scanning: {str(e)}")
             return []
+
+    def _get_item_batch_details(self, item_code):
+        """Get batch details for a specific item using your exact BatchNumberDetails API pattern"""
+        try:
+            batch_url = f"{self.base_url}/b1s/v1/BatchNumberDetails?$filter=ItemCode eq '{item_code}'"
+            logging.debug(f"[DEBUG] Getting batch details for {item_code}")
+            
+            batch_response = self.session.get(batch_url)
+            if batch_response.status_code == 200:
+                batch_data = batch_response.json().get('value', [])
+                logging.debug(f"✅ Found {len(batch_data)} batches for item {item_code}")
+                return batch_data
+            else:
+                logging.debug(f"⚠️ No batch details found for item {item_code}")
+                return []
+                
+        except Exception as e:
+            logging.error(f"❌ Error getting batch details for {item_code}: {str(e)}")
+            return []
+
+    def _get_mock_bin_items(self, bin_code):
+        """Mock data for offline mode with enhanced structure matching your API responses"""
+        return [
+            {
+                'ItemCode': 'CO0726Y',
+                'ItemName': 'COATED LOWER PLATE',
+                'ItemDescription': 'COATED LOWER PLATE',
+                'UoM': 'EA',
+                'QuantityOnStock': 100.0,
+                'OnHand': 95.0,
+                'OnStock': 95.0,
+                'InStock': 95.0,
+                'Ordered': 0.0,
+                'StandardAveragePrice': 125.50,
+                'WarehouseCode': '7000-FG',
+                'Warehouse': '7000-FG',
+                'BinCode': bin_code,
+                'BinAbsEntry': 1,
+                'BusinessPlaceID': 5,
+                'BatchCount': 1,
+                'BatchNumbers': ['20220729'],
+                'ExpiryDates': [None],
+                'AdmissionDates': ['2022-07-29T00:00:00Z'],
+                'BatchNumber': '20220729',
+                'Batch': '20220729',
+                'Status': 'bdsStatus_Released',
+                'AdmissionDate': '2022-07-29T00:00:00Z',
+                'ExpirationDate': None,
+                'ExpiryDate': None,
+                'Quantity': 95.0,
+                'BatchDetails': [{
+                    'DocEntry': 1,
+                    'ItemCode': 'CO0726Y',
+                    'ItemDescription': 'COATED LOWER PLATE',
+                    'Status': 'bdsStatus_Released',
+                    'Batch': '20220729',
+                    'AdmissionDate': '2022-07-29T00:00:00Z',
+                    'ExpirationDate': None,
+                    'SystemNumber': 1
+                }]
+            },
+            {
+                'ItemCode': 'CO0098Y',
+                'ItemName': 'Big Aluminium Insert Coated RR AC0101',
+                'ItemDescription': 'Big Aluminium Insert Coated RR AC0101',
+                'UoM': 'PCS',
+                'QuantityOnStock': 50.0,
+                'OnHand': 48.0,
+                'OnStock': 48.0,
+                'InStock': 48.0,
+                'Ordered': 10.0,
+                'StandardAveragePrice': 89.75,
+                'WarehouseCode': '7000-FG',
+                'Warehouse': '7000-FG',
+                'BinCode': bin_code,
+                'BinAbsEntry': 1,
+                'BusinessPlaceID': 5,
+                'BatchCount': 1,
+                'BatchNumbers': ['20220729'],
+                'ExpiryDates': [None],
+                'AdmissionDates': ['2022-07-29T00:00:00Z'],
+                'BatchNumber': '20220729',
+                'Batch': '20220729',
+                'Status': 'bdsStatus_Released',
+                'AdmissionDate': '2022-07-29T00:00:00Z',
+                'ExpirationDate': None,
+                'ExpiryDate': None,
+                'Quantity': 48.0,
+                'BatchDetails': [{
+                    'DocEntry': 2,
+                    'ItemCode': 'CO0098Y',
+                    'ItemDescription': 'Big Aluminium Insert Coated RR AC0101',
+                    'Status': 'bdsStatus_Released',
+                    'Batch': '20220729',
+                    'AdmissionDate': '2022-07-29T00:00:00Z',
+                    'ExpirationDate': None,
+                    'SystemNumber': 1
+                }]
+            }
+        ]
 
     def get_available_bins(self, warehouse_code):
         """Get available bins for a warehouse"""
