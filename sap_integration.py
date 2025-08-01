@@ -399,6 +399,30 @@ class SAPIntegration:
                 f"Found {len(stock_data)} items with stock in warehouse {warehouse_code}"
             )
             # Step 3: Get batch details for items (using your API example)
+
+            item_url = (f"{self.base_url}/b1s/v1/Items/$crossjoin(Items,Items/ItemWarehouseInfoCollection)?$expand=Items($select=ItemCode,UoMGroupEntry)"
+                         f",Items/ItemWarehouseInfoCollection($select=InStock,Ordered,StandardAveragePrice)"
+                         f"&$filter=Items/ItemCode eq Items/ItemWarehouseInfoCollection/ItemCode and Items/ItemWarehouseInfoCollection/WarehouseCode eq '{warehouse_code}'")
+            item_response = self.session.get(item_url)
+            print(item_url)
+            print(item_response)
+            if item_response.status_code != 200:
+                logging.error(
+                    f"Failed to get warehouse stock: {stock_response.status_code}"
+                )
+                return []
+
+            item_data = item_response.json().get('value', [])
+            print("item_data"+item_data)
+            logging.info(
+                f"Found {len(item_data)} items with stock in warehouse {warehouse_code}"
+            )
+            print(
+                f"Found {len(item_data)} items with stock in warehouse {warehouse_code}"
+            )
+
+
+            #step 4
             formatted_items = []
             for stock_item in stock_data[:
                                          10]:  # Limit to first 10 items for performance
