@@ -424,21 +424,22 @@ class SAPIntegration:
                 
                 try:
                     # Get item warehouse stock information
-                    stock_url = f"{self.base_url}/b1s/v1/Items?$filter=ItemCode eq '{item_code}'"
+                    stock_url = f"{self.base_url}/b1s/v1/ItemWhsStocks?$filter=ItemCode eq '{item_code}' and WhsCode eq '{warehouse_code}'"
                     stock_response = self.session.get(stock_url)
-                    print("stock_response-->"+stock_response)
+                    print(f"Stock response status: {stock_response.status_code}")
+                    
                     if stock_response.status_code == 200:
                         stock_data = stock_response.json().get('value', [])
-                        print("stock_data->"+stock_data)
+                        print(f"Stock data count: {len(stock_data)}")
                         if stock_data:
                             stock_info = stock_data[0]
                             on_hand_qty = stock_info.get('OnHand', 0)
                             stock_quantity = stock_info.get('OnStock', on_hand_qty)
-                            logging.debug(f"📊 Item {item_code} stock: OnHand={on_hand_qty}, OnStock={stock_quantity}")
+                            logging.debug(f"Item {item_code} stock: OnHand={on_hand_qty}, OnStock={stock_quantity}")
                     else:
-                        logging.warning(f"⚠️ Could not get stock info for {item_code}: {stock_response.status_code}")
+                        logging.warning(f"Could not get stock info for {item_code}: {stock_response.status_code}")
                 except Exception as stock_error:
-                    logging.warning(f"⚠️ Stock lookup failed for {item_code}: {stock_error}")
+                    logging.warning(f"Stock lookup failed for {item_code}: {str(stock_error)}")
                 
                 # Format the item data using correct field names from SAP API response
                 formatted_item = {

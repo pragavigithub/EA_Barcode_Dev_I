@@ -1370,6 +1370,28 @@ def get_pending_approvals():
 def bin_scanning():
     return render_template('bin_scanning.html')
 
+@app.route('/api/test-bin-scanning/<bin_code>')
+def test_bin_scanning(bin_code):
+    """Test endpoint for enhanced bin scanning functionality"""
+    try:
+        sap = SAPIntegration()
+        items = sap.get_bin_items(bin_code)
+        
+        return jsonify({
+            'success': True,
+            'bin_code': bin_code,
+            'items_count': len(items),
+            'items': items[:5],  # Return first 5 items for testing
+            'message': f'Found {len(items)} items in bin {bin_code}'
+        })
+    except Exception as e:
+        logging.error(f"Bin scanning test failed: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': f'Failed to scan bin {bin_code}'
+        })
+
 @app.route('/api/scan_bin', methods=['POST'])
 @login_required
 def scan_bin():
