@@ -47,24 +47,33 @@ if mysql_host and mysql_user and mysql_password and mysql_database:
         # URL encode the password to handle special characters
         from urllib.parse import quote_plus
         encoded_password = quote_plus(mysql_password)
-        mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}/{mysql_database}"
-        logging.info(f"✅ Attempting MySQL connection: {mysql_host}/{mysql_database}")
         
-        # Test the connection before setting it
-        from sqlalchemy import create_engine
-        test_engine = create_engine(mysql_url)
-        test_connection = test_engine.connect()
-        test_connection.close()
-        
-        app.config["SQLALCHEMY_DATABASE_URI"] = mysql_url
-        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-            "pool_recycle": 300,
-            "pool_pre_ping": True,
-            "pool_size": 10,
-            "max_overflow": 20
-        }
-        db_type = "mysql"
-        logging.info(f"✅ MySQL connection successful: {mysql_host}/{mysql_database}")
+        # Handle localhost case - skip for Replit environment
+        if mysql_host.lower() in ['localhost', '127.0.0.1']:
+            logging.warning(f"⚠️ MySQL host '{mysql_host}' detected - this won't work in Replit")
+            logging.info("💡 Please provide external MySQL server address (e.g., your hosting provider's MySQL server)")
+            logging.info("🔧 Falling back to PostgreSQL for now")
+            mysql_host = None  # Force fallback
+        else:
+            mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}/{mysql_database}"
+            logging.info(f"✅ Attempting MySQL connection: {mysql_host}/{mysql_database}")
+            
+            # Test the connection before setting it
+            from sqlalchemy import create_engine
+            test_engine = create_engine(mysql_url, connect_args={'connect_timeout': 10})
+            test_connection = test_engine.connect()
+            test_connection.close()
+            
+            app.config["SQLALCHEMY_DATABASE_URI"] = mysql_url
+            app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+                "pool_recycle": 300,
+                "pool_pre_ping": True,
+                "pool_size": 10,
+                "max_overflow": 20,
+                "connect_args": {'connect_timeout': 10}
+            }
+            db_type = "mysql"
+            logging.info(f"✅ MySQL connection successful: {mysql_host}/{mysql_database}")
     except Exception as e:
         logging.error(f"❌ MySQL connection failed: {e}")
         logging.info("🔧 Falling back to PostgreSQL/SQLite")
