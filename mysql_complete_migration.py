@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 def test_mysql_connection():
     """Test MySQL connection with current credentials"""
     mysql_host = os.environ.get("MYSQL_HOST")
+    mysql_port = os.environ.get("MYSQL_PORT", "3306")
     mysql_user = os.environ.get("MYSQL_USER") 
     mysql_password = os.environ.get("MYSQL_PASSWORD")
     mysql_database = os.environ.get("MYSQL_DATABASE")
@@ -55,14 +56,21 @@ def test_mysql_connection():
         logger.info("  - mysql.your-website.com")
         logger.info("  - External IP like 203.0.113.10 (if accessible from internet)")
         logger.info("")
-        logger.info("🔧 Alternative: Use Replit's PostgreSQL for now")
-        logger.info("  Your app will automatically use PostgreSQL and work correctly")
+        logger.info("🔧 Alternative Solutions:")
+        logger.info("  1. Use ngrok to expose your local MySQL:")
+        logger.info("     - Run: ngrok tcp 3306")
+        logger.info("     - Update MYSQL_HOST to ngrok URL")
+        logger.info("  2. Use PostgreSQL (already working)")
+        logger.info("     - Your app automatically uses PostgreSQL")
+        logger.info("     - All data stored safely")
+        logger.info("")
+        logger.info("💡 Run: python setup_local_mysql_tunnel.py for detailed guide")
         return False
     
     try:
         # URL encode password to handle special characters
         encoded_password = quote_plus(mysql_password)
-        mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}/{mysql_database}"
+        mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}:{mysql_port}/{mysql_database}"
         
         logger.info(f"🔍 Testing MySQL connection to {mysql_host}/{mysql_database}")
         

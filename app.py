@@ -36,6 +36,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Configure database - Priority: MySQL > PostgreSQL > SQLite
 mysql_host = os.environ.get("MYSQL_HOST")
+mysql_port = os.environ.get("MYSQL_PORT", "3306")
 mysql_user = os.environ.get("MYSQL_USER") 
 mysql_password = os.environ.get("MYSQL_PASSWORD")
 mysql_database = os.environ.get("MYSQL_DATABASE")
@@ -51,11 +52,11 @@ if mysql_host and mysql_user and mysql_password and mysql_database:
         # Handle localhost case - skip for Replit environment
         if mysql_host.lower() in ['localhost', '127.0.0.1']:
             logging.warning(f"⚠️ MySQL host '{mysql_host}' detected - this won't work in Replit")
-            logging.info("💡 Please provide external MySQL server address (e.g., your hosting provider's MySQL server)")
+            logging.info("💡 To use local MySQL: run 'ngrok tcp 3306' and update MYSQL_HOST")
             logging.info("🔧 Falling back to PostgreSQL for now")
             mysql_host = None  # Force fallback
         else:
-            mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}/{mysql_database}"
+            mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}:{mysql_port}/{mysql_database}"
             logging.info(f"✅ Attempting MySQL connection: {mysql_host}/{mysql_database}")
             
             # Test the connection before setting it
