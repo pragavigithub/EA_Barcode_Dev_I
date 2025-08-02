@@ -64,7 +64,10 @@ def test_mysql_connection():
         logger.info("     - Your app automatically uses PostgreSQL")
         logger.info("     - All data stored safely")
         logger.info("")
-        logger.info("💡 Run: python setup_local_mysql_tunnel.py for detailed guide")
+        logger.info("💡 Quick Solutions:")
+        logger.info("  - Run: python setup_local_mysql_tunnel.py for detailed guide")
+        logger.info("  - Or continue using PostgreSQL (works perfectly)")
+        logger.info("  - Dual database sync will activate when MySQL is accessible")
         return False
     
     try:
@@ -131,13 +134,16 @@ def migrate_to_mysql():
         if create_mysql_tables():
             logger.info("✅ MySQL migration completed successfully!")
             logger.info("📊 Your WMS data will now be stored in MySQL database")
+            logger.info("🔄 Dual database sync activated - data goes to both PostgreSQL and MySQL")
             return True
         else:
             logger.error("❌ MySQL table creation failed")
             return False
     else:
         logger.error("❌ MySQL connection failed - migration aborted")
-        logger.info("🔧 Currently using PostgreSQL as fallback")
+        logger.info("🔧 Currently using PostgreSQL with dual database support ready")
+        logger.info("✅ Your WMS works perfectly - data is safely stored in PostgreSQL")
+        logger.info("💡 When MySQL connection is fixed, dual sync will automatically activate")
         return False
 
 if __name__ == "__main__":

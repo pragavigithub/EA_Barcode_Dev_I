@@ -34,18 +34,35 @@ class DualDatabaseManager:
             'database': os.environ.get('MYSQL_DATABASE', 'wms_db_dev')
         }
         
+        # Check if localhost MySQL (won't work in Replit)
+        if mysql_config['host'].lower() in ['localhost', '127.0.0.1']:
+            logging.warning(f"⚠️ MySQL host '{mysql_config['host']}' detected in dual database - won't work in Replit")
+            logging.info("💡 To enable MySQL sync: update MYSQL_HOST to external server or use ngrok tunnel")
+            logging.info("🔄 Operating in SQLite-only mode")
+            self.mysql_engine = None
+            return
+        
         try:
-            mysql_url = f"mysql+pymysql://{mysql_config['user']}:{mysql_config['password']}@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}"
-            self.mysql_engine = create_engine(mysql_url)
-            logging.info("✅ MySQL engine configured for dual database support")
+            from urllib.parse import quote_plus
+            encoded_password = quote_plus(mysql_config['password'])
+            mysql_url = f"mysql+pymysql://{mysql_config['user']}:{encoded_password}@{mysql_config['host']}:{mysql_config['port']}/{mysql_config['database']}"
+            
+            # Test connection before creating engine
+            test_engine = create_engine(mysql_url, connect_args={'connect_timeout': 5})
+            test_connection = test_engine.connect()
+            test_connection.close()
+            
+            self.mysql_engine = create_engine(mysql_url, connect_args={'connect_timeout': 10})
+            logging.info(f"✅ MySQL dual database sync enabled: {mysql_config['host']}/{mysql_config['database']}")
         except Exception as e:
-            logging.warning(f"⚠️ MySQL engine setup failed: {e}. Operating in SQLite-only mode.")
+            logging.warning(f"⚠️ MySQL dual database setup failed: {e}")
+            logging.info("🔄 Operating in SQLite-only mode")
             self.mysql_engine = None
     
     def sync_to_mysql(self, table_name, operation, data=None, where_clause=None):
         """Synchronize changes to MySQL database"""
         if not self.mysql_engine:
-            logging.debug(f"MySQL not available, skipping sync for {table_name}")
+            logging.debug(f"MySQL dual sync not available for {table_name} - using primary database only")
             return
         
         if not data and operation in ['INSERT', 'UPDATE']:
