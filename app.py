@@ -49,11 +49,12 @@ if mysql_host and mysql_user and mysql_password and mysql_database:
         from urllib.parse import quote_plus
         encoded_password = quote_plus(mysql_password)
         
-        # Handle localhost case - skip for Replit environment
+        # Handle localhost case - provide clear solution
         if mysql_host.lower() in ['localhost', '127.0.0.1']:
-            logging.warning(f"⚠️ MySQL host '{mysql_host}' detected - this won't work in Replit")
-            logging.info("💡 To use local MySQL: run 'ngrok tcp 3306' and update MYSQL_HOST")
-            logging.info("🔧 Falling back to PostgreSQL for now")
+            logging.error(f"❌ MySQL host '{mysql_host}' won't work in Replit cloud environment")
+            logging.info("🔧 SOLUTION: Run 'python fix_mysql_localhost.py' for setup guide")
+            logging.info("📋 Quick fix: Use ngrok to tunnel your local MySQL to Replit")
+            logging.info("⏭️ Falling back to PostgreSQL until MySQL tunnel is configured")
             mysql_host = None  # Force fallback
         else:
             mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}:{mysql_port}/{mysql_database}"
