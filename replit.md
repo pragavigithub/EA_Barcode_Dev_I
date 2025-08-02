@@ -7,7 +7,7 @@ This is a comprehensive Warehouse Management System (WMS) built with Flask that 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
-Database preference: MySQL database for local development with migration scripts.
+Database preference: Dual database strategy - PostgreSQL for Replit, MySQL for local machine interaction with single migration script.
 Mobile technology preference: Native Android Java for mobile applications (switched from React Native).
 Module priorities: PickList Module, GRPO Module, Inventory Transfer Module.
 
@@ -16,7 +16,7 @@ Module priorities: PickList Module, GRPO Module, Inventory Transfer Module.
 ### Backend Architecture
 - **Framework**: Flask (Python web framework)
 - **Database**: SQLAlchemy ORM with MySQL as primary database for Replit environment. Supports dual database architecture with automatic fallback to PostgreSQL or SQLite if MySQL credentials are unavailable. Prioritizes MySQL > PostgreSQL > SQLite for maximum compatibility.
-- **Migration Status**: Successfully migrated from Replit Agent to Replit environment on August 2, 2025. Database configuration updated to prioritize MySQL over PostgreSQL, ensuring all data is stored in user's MySQL database. Enhanced SAP B1 API integration with correct field mappings for BinLocations, Warehouses, and BatchNumberDetails APIs based on actual API response analysis.
+- **Migration Status**: Successfully migrated from Replit Agent to Replit environment on August 2, 2025. Implemented dual database strategy: PostgreSQL as primary for Replit integration, MySQL for local machine interaction. Consolidated all migration files into single comprehensive setup tool. Enhanced SAP B1 API integration with correct field mappings for BinLocations, Warehouses, and BatchNumberDetails APIs based on actual API response analysis.
 - **Authentication**: Flask-Login for user session management with role-based access control and branch-specific access.
 - **SAP Integration**: Custom SAP B1 Service Layer integration via REST API for real-time data synchronization of POs, inventory, documents, and master data (warehouses, bins, business partners).
 - **Security**: Password hashing with Werkzeug utilities, CSRF protection, and environment-based configuration.
