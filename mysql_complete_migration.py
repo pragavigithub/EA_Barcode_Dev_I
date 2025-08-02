@@ -9,6 +9,16 @@ import logging
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logging.info("Environment variables loaded from .env file")
+except ImportError:
+    logging.warning("python-dotenv not installed, using system environment variables")
+except Exception as e:
+    logging.warning(f"Could not load .env file: {e}")
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -35,10 +45,18 @@ def test_mysql_connection():
     if mysql_host.lower() in ['localhost', '127.0.0.1']:
         logger.error("❌ MySQL host is 'localhost' - this won't work in Replit")
         logger.info("💡 You need to provide an external MySQL server address")
-        logger.info("Examples:")
+        logger.info("")
+        logger.info("📋 To fix this, update your Replit Secrets or .env file:")
+        logger.info("  MYSQL_HOST=your-external-mysql-server.com")
+        logger.info("")
+        logger.info("Examples of external MySQL hosts:")
         logger.info("  - your-domain.com")
         logger.info("  - db.your-hosting-provider.com")
-        logger.info("  - External IP address like 192.168.1.100")
+        logger.info("  - mysql.your-website.com")
+        logger.info("  - External IP like 203.0.113.10 (if accessible from internet)")
+        logger.info("")
+        logger.info("🔧 Alternative: Use Replit's PostgreSQL for now")
+        logger.info("  Your app will automatically use PostgreSQL and work correctly")
         return False
     
     try:
