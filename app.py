@@ -34,16 +34,43 @@ app.secret_key = os.environ.get(
     "SESSION_SECRET") or "dev-secret-key-change-in-production"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure database - Use SQLite for Replit environment migration
+# Configure database - Priority: MySQL > PostgreSQL > SQLite
+mysql_host = os.environ.get("MYSQL_HOST")
+mysql_user = os.environ.get("MYSQL_USER") 
+mysql_password = os.environ.get("MYSQL_PASSWORD")
+mysql_database = os.environ.get("MYSQL_DATABASE")
 database_url = os.environ.get("DATABASE_URL")
 
-# Check if DATABASE_URL points to MySQL (local development)
-# If so, use SQLite for Replit environment instead
-if database_url and "mysql" in database_url.lower():
-    logging.info("🔧 MySQL DATABASE_URL detected, switching to SQLite for Replit environment")
-    database_url = None  # Force use of SQLite
+# Check if MySQL credentials are available (highest priority)
+if mysql_host and mysql_user and mysql_password and mysql_database:
+    try:
+        # URL encode the password to handle special characters
+        from urllib.parse import quote_plus
+        encoded_password = quote_plus(mysql_password)
+        mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}/{mysql_database}"
+        logging.info(f"✅ Attempting MySQL connection: {mysql_host}/{mysql_database}")
+        
+        # Test the connection before setting it
+        from sqlalchemy import create_engine
+        test_engine = create_engine(mysql_url)
+        test_connection = test_engine.connect()
+        test_connection.close()
+        
+        app.config["SQLALCHEMY_DATABASE_URI"] = mysql_url
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_recycle": 300,
+            "pool_pre_ping": True,
+            "pool_size": 10,
+            "max_overflow": 20
+        }
+        db_type = "mysql"
+        logging.info(f"✅ MySQL connection successful: {mysql_host}/{mysql_database}")
+    except Exception as e:
+        logging.error(f"❌ MySQL connection failed: {e}")
+        logging.info("🔧 Falling back to PostgreSQL/SQLite")
+        mysql_host = None  # Force fallback
 
-if database_url and "postgresql" in database_url.lower():
+if not mysql_host and database_url and "postgresql" in database_url.lower():
     logging.info(f"✅ Using PostgreSQL database from DATABASE_URL")
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -54,8 +81,8 @@ if database_url and "postgresql" in database_url.lower():
     }
     db_type = "postgresql"
 else:
-    # Use SQLite for Replit environment
-    logging.info("🔧 Using SQLite database for Replit environment")
+    # Fallback to SQLite for Replit environment
+    logging.info("🔧 Using SQLite database as fallback")
     import os
     sqlite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'wms.db')
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{sqlite_path}"
