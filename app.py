@@ -49,14 +49,22 @@ if mysql_host and mysql_user and mysql_password and mysql_database:
         from urllib.parse import quote_plus
         encoded_password = quote_plus(mysql_password)
         
-        # Handle localhost case - provide clear solution
+        # Check if running in Replit or local environment
+        # LOCAL_DEVELOPMENT=true forces local mode
+        force_local = os.environ.get('LOCAL_DEVELOPMENT', '').lower() == 'true'
+        is_replit = not force_local and (os.environ.get('REPLIT_DEPLOYMENT_DOMAIN') or os.environ.get('REPLIT_DB_URL') or 'replit' in os.environ.get('HOSTNAME', '').lower())
+        
+        # Handle localhost case - only block in Replit environment
         if mysql_host.lower() in ['localhost', '127.0.0.1']:
-            logging.error(f"❌ MySQL host '{mysql_host}' won't work in Replit cloud environment")
-            logging.info("🔧 SOLUTION: Run 'python fix_mysql_localhost.py' for setup guide")
-            logging.info("📋 Quick fix: Use ngrok to tunnel your local MySQL to Replit")
-            logging.info("⏭️ Falling back to PostgreSQL until MySQL tunnel is configured")
-            mysql_host = None  # Force fallback
-        else:
+            if is_replit:
+                logging.error(f"❌ MySQL host '{mysql_host}' won't work in Replit cloud environment")
+                logging.info("🔧 SOLUTION: Use ngrok to tunnel your local MySQL to Replit")
+                logging.info("⏭️ Falling back to PostgreSQL until MySQL tunnel is configured")
+                mysql_host = None  # Force fallback
+            else:
+                logging.info(f"✅ Local development detected - connecting to MySQL localhost")
+        
+        if mysql_host:  # Only if MySQL host is still valid (not None)
             mysql_url = f"mysql+pymysql://{mysql_user}:{encoded_password}@{mysql_host}:{mysql_port}/{mysql_database}"
             logging.info(f"✅ Attempting MySQL connection: {mysql_host}/{mysql_database}")
             

@@ -34,13 +34,21 @@ class DualDatabaseManager:
             'database': os.environ.get('MYSQL_DATABASE', 'wms_db_dev')
         }
         
-        # Check if localhost MySQL (won't work in Replit)
+        # Check if running in Replit or local environment
+        # LOCAL_DEVELOPMENT=true forces local mode
+        force_local = os.environ.get('LOCAL_DEVELOPMENT', '').lower() == 'true'
+        is_replit = not force_local and (os.environ.get('REPLIT_DEPLOYMENT_DOMAIN') or os.environ.get('REPLIT_DB_URL') or 'replit' in os.environ.get('HOSTNAME', '').lower())
+        
+        # Check if localhost MySQL (only block in Replit)
         if mysql_config['host'].lower() in ['localhost', '127.0.0.1']:
-            logging.warning(f"⚠️ MySQL host '{mysql_config['host']}' detected in dual database - won't work in Replit")
-            logging.info("💡 To enable MySQL sync: update MYSQL_HOST to external server or use ngrok tunnel")
-            logging.info("🔄 Operating in SQLite-only mode")
-            self.mysql_engine = None
-            return
+            if is_replit:
+                logging.warning(f"⚠️ MySQL host '{mysql_config['host']}' detected in dual database - won't work in Replit")
+                logging.info("💡 To enable MySQL sync: update MYSQL_HOST to external server or use ngrok tunnel")
+                logging.info("🔄 Operating in SQLite-only mode")
+                self.mysql_engine = None
+                return
+            else:
+                logging.info(f"✅ Local development detected - enabling MySQL dual sync for localhost")
         
         try:
             from urllib.parse import quote_plus
