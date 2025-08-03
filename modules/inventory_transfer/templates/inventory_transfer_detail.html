@@ -245,12 +245,12 @@
                 <h5 class="modal-title">Add Item to Transfer</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="addItemForm" method="POST" action="{{ url_for('inventory_transfer_detail', transfer_id=transfer.id) }}" onsubmit="return handleFormSubmit(event);">
+            <form id="addItemForm" method="POST" action="{{ url_for('inventory_transfer.add_item', transfer_id=transfer.id) }}" onsubmit="return handleFormSubmit(event);">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="item_code" class="form-label">Item Code <span class="text-danger">*</span></label>
                         <div class="input-group">
-                            <input type="text" class="form-control" id="item_code" name="item_code" required>
+                            <input type="text" class="form-control" id="item_code" name="item_code" required onchange="loadBatches()">
                             <button type="button" class="btn btn-outline-primary" onclick="scanItemCode()">
                                 <i data-feather="camera"></i> Scan Item
                             </button>
@@ -304,7 +304,15 @@
                             <div class="mb-3">
                                 <label for="from_bin" class="form-label">From Bin Location <span class="text-danger">*</span></label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="from_bin" name="from_bin" required>
+                                    <!-- Dropdown for From Bin -->
+                                    <select class="form-select" id="from_bin_dropdown" name="from_bin" onchange="handleFromBinSelection()" style="display: flex;">
+                                        <option value="">Select From Bin Location...</option>
+                                    </select>
+                                    <!-- Manual input (hidden by default) -->
+                                    <input type="text" class="form-control" id="from_bin_manual" name="from_bin" style="display: none;" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="toggleManualFromBin()">
+                                        <i data-feather="edit"></i>
+                                    </button>
                                     <button type="button" class="btn btn-outline-primary" onclick="scanBin('from')">
                                         <i data-feather="camera"></i> Scan
                                     </button>
@@ -315,7 +323,15 @@
                             <div class="mb-3">
                                 <label for="to_bin" class="form-label">To Bin Location <span class="text-danger">*</span></label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="to_bin" name="to_bin" required>
+                                    <!-- Dropdown for To Bin -->
+                                    <select class="form-select" id="to_bin_dropdown" name="to_bin" onchange="handleToBinSelection()" style="display: flex;">
+                                        <option value="">Select To Bin Location...</option>
+                                    </select>
+                                    <!-- Manual input (hidden by default) -->
+                                    <input type="text" class="form-control" id="to_bin_manual" name="to_bin" style="display: none;" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="toggleManualToBin()">
+                                        <i data-feather="edit"></i>
+                                    </button>
                                     <button type="button" class="btn btn-outline-primary" onclick="scanBin('to')">
                                         <i data-feather="camera"></i> Scan
                                     </button>
@@ -325,7 +341,17 @@
                     </div>
                     <div class="mb-3">
                         <label for="batch_number" class="form-label">Batch Number</label>
-                        <input type="text" class="form-control" id="batch_number" name="batch_number">
+                        <div class="input-group">
+                            <!-- Dropdown for Batch -->
+                            <select class="form-select" id="batch_dropdown" name="batch_number" onchange="handleBatchSelection()" style="display: flex;">
+                                <option value="">Select Batch...</option>
+                            </select>
+                            <!-- Manual input (hidden by default) -->
+                            <input type="text" class="form-control" id="batch_manual" name="batch_number" style="display: none;">
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleManualBatch()">
+                                <i data-feather="edit"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -413,9 +439,30 @@ function editItem(itemId, itemCode, itemName, quantity, uom, fromBin, toBin, bat
     document.getElementById('item_name').value = itemName;
     document.getElementById('quantity').value = quantity;
     document.getElementById('unit_of_measure').value = uom;
-    document.getElementById('from_bin').value = fromBin;
-    document.getElementById('to_bin').value = toBin;
-    document.getElementById('batch_number').value = batchNumber;
+    
+    // Set bin values in both dropdown and manual inputs
+    document.getElementById('from_bin_dropdown').value = fromBin;
+    document.getElementById('from_bin_manual').value = fromBin;
+    document.getElementById('to_bin_dropdown').value = toBin;
+    document.getElementById('to_bin_manual').value = toBin;
+    
+    // Set batch values in both dropdown and manual inputs
+    document.getElementById('batch_dropdown').value = batchNumber || '';
+    document.getElementById('batch_manual').value = batchNumber || '';
+    
+    // Load the corresponding warehouse bin locations
+    const fromWarehouse = document.getElementById('from_warehouse_code').value;
+    const toWarehouse = document.getElementById('to_warehouse_code').value;
+    
+    if (fromWarehouse) {
+        loadFromBinLocations(fromWarehouse);
+    }
+    if (toWarehouse) {
+        loadToBinLocations(toWarehouse);
+    }
+    
+    // Load batches for the item
+    loadBatches();
     
     // Change form action to edit mode
     const form = document.getElementById('addItemForm');
@@ -435,6 +482,33 @@ function handleFormSubmit(event) {
     const form = event.target;
     const isEditMode = form.getAttribute('data-edit-mode') === 'true';
     
+    // Ensure the correct bin values are set before submission
+    const fromBinDropdown = document.getElementById('from_bin_dropdown');
+    const fromBinManual = document.getElementById('from_bin_manual');
+    const toBinDropdown = document.getElementById('to_bin_dropdown');
+    const toBinManual = document.getElementById('to_bin_manual');
+    const batchDropdown = document.getElementById('batch_dropdown');
+    const batchManual = document.getElementById('batch_manual');
+    
+    // Set the correct values based on what's visible
+    if (fromBinManual.style.display !== 'none') {
+        fromBinDropdown.value = fromBinManual.value;
+    } else {
+        fromBinManual.value = fromBinDropdown.value;
+    }
+    
+    if (toBinManual.style.display !== 'none') {
+        toBinDropdown.value = toBinManual.value;
+    } else {
+        toBinManual.value = toBinDropdown.value;
+    }
+    
+    if (batchManual.style.display !== 'none') {
+        batchDropdown.value = batchManual.value;
+    } else {
+        batchManual.value = batchDropdown.value;
+    }
+    
     if (isEditMode) {
         event.preventDefault();
         
@@ -443,9 +517,9 @@ function handleFormSubmit(event) {
         
         const data = {
             quantity: formData.get('quantity'),
-            from_bin: formData.get('from_bin'),
-            to_bin: formData.get('to_bin'),
-            batch_number: formData.get('batch_number')
+            from_bin: fromBinDropdown.value || fromBinManual.value,
+            to_bin: toBinDropdown.value || toBinManual.value,
+            batch_number: batchDropdown.value || batchManual.value
         };
         
         fetch(`/inventory_transfer/{{ transfer.id }}/item/${itemId}/edit`, {
@@ -505,6 +579,19 @@ document.getElementById('addItemModal').addEventListener('hidden.bs.modal', func
     form.removeAttribute('data-edit-mode');
     form.removeAttribute('data-item-id');
     form.reset();
+    
+    // Reset dropdowns
+    document.getElementById('from_bin_dropdown').innerHTML = '<option value="">Select From Bin Location...</option>';
+    document.getElementById('to_bin_dropdown').innerHTML = '<option value="">Select To Bin Location...</option>';
+    document.getElementById('batch_dropdown').innerHTML = '<option value="">Select Batch...</option>';
+    
+    // Reset manual/dropdown display states
+    document.getElementById('from_bin_dropdown').style.display = 'block';
+    document.getElementById('from_bin_manual').style.display = 'none';
+    document.getElementById('to_bin_dropdown').style.display = 'block';
+    document.getElementById('to_bin_manual').style.display = 'none';
+    document.getElementById('batch_dropdown').style.display = 'block';
+    document.getElementById('batch_manual').style.display = 'none';
     
     // Reset modal title and button text
     document.querySelector('#addItemModal .modal-title').textContent = 'Add Item to Transfer';
@@ -591,10 +678,192 @@ document.getElementById('addItemModal').addEventListener('show.bs.modal', functi
     // Pre-fill warehouse codes in form if available
     if (fromWarehouse) {
         document.getElementById('from_warehouse_code').value = fromWarehouse;
+        // Load bin locations for from warehouse
+        loadFromBinLocations(fromWarehouse);
     }
     if (toWarehouse) {
         document.getElementById('to_warehouse_code').value = toWarehouse;
+        // Load bin locations for to warehouse
+        loadToBinLocations(toWarehouse);
     }
 });
+
+// Load cascading bin locations for From Warehouse
+function loadFromBinLocations(warehouseCode) {
+    if (!warehouseCode) return;
+    
+    console.log('Loading from bin locations for warehouse:', warehouseCode);
+    fetch(`/api/bin-locations?warehouse=${warehouseCode}`)
+        .then(response => response.json())
+        .then(data => {
+            const binDropdown = document.getElementById('from_bin_dropdown');
+            binDropdown.innerHTML = '<option value="">Select From Bin Location...</option>';
+            
+            if (data.success && data.bins) {
+                data.bins.forEach(bin => {
+                    const option = document.createElement('option');
+                    option.value = bin.BinCode;
+                    option.textContent = `${bin.BinCode} - ${bin.BinName || bin.Description || bin.BinCode}`;
+                    binDropdown.appendChild(option);
+                });
+                
+                binDropdown.disabled = false;
+                console.log(`Loaded ${data.bins.length} from bin locations`);
+            } else {
+                console.error('Failed to load from bin locations:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading from bin locations:', error);
+        });
+}
+
+// Load cascading bin locations for To Warehouse
+function loadToBinLocations(warehouseCode) {
+    if (!warehouseCode) return;
+    
+    console.log('Loading to bin locations for warehouse:', warehouseCode);
+    fetch(`/api/bin-locations?warehouse=${warehouseCode}`)
+        .then(response => response.json())
+        .then(data => {
+            const binDropdown = document.getElementById('to_bin_dropdown');
+            binDropdown.innerHTML = '<option value="">Select To Bin Location...</option>';
+            
+            if (data.success && data.bins) {
+                data.bins.forEach(bin => {
+                    const option = document.createElement('option');
+                    option.value = bin.BinCode;
+                    option.textContent = `${bin.BinCode} - ${bin.BinName || bin.Description || bin.BinCode}`;
+                    binDropdown.appendChild(option);
+                });
+                
+                binDropdown.disabled = false;
+                console.log(`Loaded ${data.bins.length} to bin locations`);
+            } else {
+                console.error('Failed to load to bin locations:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading to bin locations:', error);
+        });
+}
+
+// Load cascading batches for item code
+function loadBatches() {
+    const itemCode = document.getElementById('item_code').value;
+    const fromWarehouse = document.getElementById('from_warehouse_code').value;
+    
+    if (!itemCode) {
+        console.log('No item code available for batch loading');
+        return;
+    }
+    
+    console.log('Loading batches for item:', itemCode, 'from warehouse:', fromWarehouse);
+    
+    let url = `/api/batches?item_code=${itemCode}`;
+    if (fromWarehouse) {
+        url += `&warehouse=${fromWarehouse}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            const batchDropdown = document.getElementById('batch_dropdown');
+            batchDropdown.innerHTML = '<option value="">Select Batch...</option>';
+            
+            if (data.success && data.batches && data.batches.length > 0) {
+                data.batches.forEach(batch => {
+                    const option = document.createElement('option');
+                    option.value = batch.BatchNumber;
+                    option.textContent = `${batch.BatchNumber} (Qty: ${batch.Quantity || 0}, Exp: ${batch.ExpiryDate || 'N/A'})`;
+                    batchDropdown.appendChild(option);
+                });
+                
+                batchDropdown.disabled = false;
+                console.log(`Loaded ${data.batches.length} batches`);
+            } else {
+                console.log('No batches found for item:', itemCode);
+                batchDropdown.disabled = false; // Enable so user can choose "no batch"
+            }
+        })
+        .catch(error => {
+            console.error('Error loading batches:', error);
+            batchDropdown.disabled = false; // Enable so user can choose "no batch"
+        });
+}
+
+// Manual Entry Toggle Functions
+function toggleManualFromBin() {
+    const dropdown = document.getElementById('from_bin_dropdown');
+    const manual = document.getElementById('from_bin_manual');
+    
+    if (manual.style.display === 'none') {
+        manual.style.display = 'block';
+        dropdown.style.display = 'none';
+        manual.focus();
+    } else {
+        manual.style.display = 'none';
+        dropdown.style.display = 'block';
+        dropdown.focus();
+    }
+}
+
+function toggleManualToBin() {
+    const dropdown = document.getElementById('to_bin_dropdown');
+    const manual = document.getElementById('to_bin_manual');
+    
+    if (manual.style.display === 'none') {
+        manual.style.display = 'block';
+        dropdown.style.display = 'none';
+        manual.focus();
+    } else {
+        manual.style.display = 'none';
+        dropdown.style.display = 'block';
+        dropdown.focus();
+    }
+}
+
+function toggleManualBatch() {
+    const dropdown = document.getElementById('batch_dropdown');
+    const manual = document.getElementById('batch_manual');
+    
+    if (manual.style.display === 'none') {
+        manual.style.display = 'block';
+        dropdown.style.display = 'none';
+        manual.focus();
+    } else {
+        manual.style.display = 'none';
+        dropdown.style.display = 'block';
+        dropdown.focus();
+    }
+}
+
+// Handle dropdown selections
+function handleFromBinSelection() {
+    const dropdown = document.getElementById('from_bin_dropdown');
+    const manual = document.getElementById('from_bin_manual');
+    
+    if (dropdown.value) {
+        manual.value = dropdown.value;
+    }
+}
+
+function handleToBinSelection() {
+    const dropdown = document.getElementById('to_bin_dropdown');
+    const manual = document.getElementById('to_bin_manual');
+    
+    if (dropdown.value) {
+        manual.value = dropdown.value;
+    }
+}
+
+function handleBatchSelection() {
+    const dropdown = document.getElementById('batch_dropdown');
+    const manual = document.getElementById('batch_manual');
+    
+    if (dropdown.value) {
+        manual.value = dropdown.value;
+    }
+}
 </script>
 {% endblock %}

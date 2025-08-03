@@ -258,6 +258,121 @@ def reopen(transfer_id):
         logging.error(f"Error reopening transfer: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@transfer_bp.route('/<int:transfer_id>/item/add', methods=['POST'])
+@login_required
+def add_item(transfer_id):
+    """Add item to inventory transfer"""
+    try:
+        transfer = InventoryTransfer.query.get_or_404(transfer_id)
+        
+        # Check permissions
+        if transfer.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if transfer.status != 'draft':
+            return jsonify({'success': False, 'error': 'Can only add items to draft transfers'}), 400
+        
+        # Get form data
+        item_code = request.form.get('item_code')
+        item_name = request.form.get('item_name')
+        quantity = request.form.get('quantity')
+        unit_of_measure = request.form.get('unit_of_measure')
+        from_warehouse_code = request.form.get('from_warehouse_code')
+        to_warehouse_code = request.form.get('to_warehouse_code')
+        from_bin = request.form.get('from_bin')
+        to_bin = request.form.get('to_bin')
+        batch_number = request.form.get('batch_number')
+        
+        if not all([item_code, quantity, from_bin, to_bin]):
+            return jsonify({'success': False, 'error': 'Required fields missing'}), 400
+        
+        # Create new item
+        item = InventoryTransferItem(
+            transfer_id=transfer_id,
+            item_code=item_code,
+            item_name=item_name,
+            quantity=float(quantity),
+            unit_of_measure=unit_of_measure,
+            from_warehouse_code=from_warehouse_code,
+            to_warehouse_code=to_warehouse_code,
+            from_bin=from_bin,
+            to_bin=to_bin,
+            batch_number=batch_number if batch_number else None
+        )
+        
+        db.session.add(item)
+        db.session.commit()
+        
+        logging.info(f"✅ Item {item_code} added to transfer {transfer_id}")
+        return redirect(url_for('inventory_transfer.detail', transfer_id=transfer_id))
+        
+    except Exception as e:
+        logging.error(f"Error adding item: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@transfer_bp.route('/<int:transfer_id>/item/<int:item_id>/edit', methods=['POST'])
+@login_required
+def edit_item(transfer_id, item_id):
+    """Edit inventory transfer item"""
+    try:
+        transfer = InventoryTransfer.query.get_or_404(transfer_id)
+        item = InventoryTransferItem.query.get_or_404(item_id)
+        
+        # Check permissions
+        if transfer.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if transfer.status != 'draft':
+            return jsonify({'success': False, 'error': 'Can only edit items in draft transfers'}), 400
+        
+        # Get form data
+        data = request.get_json() if request.is_json else request.form
+        
+        # Update item fields
+        if 'quantity' in data:
+            item.quantity = float(data['quantity'])
+        if 'from_bin' in data:
+            item.from_bin = data['from_bin']
+        if 'to_bin' in data:
+            item.to_bin = data['to_bin']
+        if 'batch_number' in data:
+            item.batch_number = data['batch_number'] if data['batch_number'] else None
+        
+        item.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        logging.info(f"✅ Item {item.item_code} updated in transfer {transfer_id}")
+        return jsonify({'success': True, 'message': 'Item updated successfully'})
+        
+    except Exception as e:
+        logging.error(f"Error editing item: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@transfer_bp.route('/<int:transfer_id>/item/<int:item_id>/delete', methods=['POST'])
+@login_required
+def delete_item(transfer_id, item_id):
+    """Delete inventory transfer item"""
+    try:
+        transfer = InventoryTransfer.query.get_or_404(transfer_id)
+        item = InventoryTransferItem.query.get_or_404(item_id)
+        
+        # Check permissions
+        if transfer.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+        
+        if transfer.status != 'draft':
+            return jsonify({'success': False, 'error': 'Can only delete items from draft transfers'}), 400
+        
+        db.session.delete(item)
+        db.session.commit()
+        
+        logging.info(f"✅ Item {item.item_code} deleted from transfer {transfer_id}")
+        return jsonify({'success': True, 'message': 'Item deleted successfully'})
+        
+    except Exception as e:
+        logging.error(f"Error deleting item: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 def log_status_change(transfer_id, previous_status, new_status, changed_by_id, notes=None):
     """Log status change to history table"""
     try:
