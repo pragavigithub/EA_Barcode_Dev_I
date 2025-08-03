@@ -52,7 +52,7 @@ if mysql_host and mysql_user and mysql_password and mysql_database:
         # Check if running in Replit or local environment
         # LOCAL_DEVELOPMENT=true forces local mode
         force_local = os.environ.get('LOCAL_DEVELOPMENT', '').lower() == 'true'
-        is_replit = not force_local and (os.environ.get('REPLIT_DEPLOYMENT_DOMAIN') or os.environ.get('REPLIT_DB_URL') or 'replit' in os.environ.get('HOSTNAME', '').lower())
+        is_replit = not force_local and (os.environ.get('REPLIT_DEPLOYMENT_DOMAIN'))
         
         # Handle localhost case - only block in Replit environment
         if mysql_host.lower() in ['localhost', '127.0.0.1']:
@@ -88,35 +88,6 @@ if mysql_host and mysql_user and mysql_password and mysql_database:
         logging.error(f"❌ MySQL connection failed: {e}")
         logging.info("🔧 Falling back to PostgreSQL/SQLite")
         mysql_host = None  # Force fallback
-
-if not mysql_host and database_url and "postgresql" in database_url.lower():
-    logging.info(f"✅ Using PostgreSQL database from DATABASE_URL")
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-        "pool_size": 10,
-        "max_overflow": 20
-    }
-    db_type = "postgresql"
-else:
-    # Fallback to SQLite for Replit environment
-    logging.info("🔧 Using SQLite database as fallback")
-    import os
-    sqlite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'wms.db')
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{sqlite_path}"
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-    }
-    db_type = "sqlite"
-    # Ensure instance directory exists
-    os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
-    logging.info(f"SQLite database path: {sqlite_path}")
-
-# Store database type for use in other modules
-app.config["DB_TYPE"] = db_type
-
 # Initialize extensions with app
 db.init_app(app)
 login_manager.init_app(app)
@@ -125,7 +96,7 @@ login_manager.login_message = 'Please log in to access this page.'
 
 # SAP B1 Configuration
 app.config['SAP_B1_SERVER'] = os.environ.get('SAP_B1_SERVER',
-                                             'https://192.168.0.194:50000')
+                                             'https://192.168.1.5:50000')
 app.config['SAP_B1_USERNAME'] = os.environ.get('SAP_B1_USERNAME', 'manager')
 app.config['SAP_B1_PASSWORD'] = os.environ.get('SAP_B1_PASSWORD', '1422')
 app.config['SAP_B1_COMPANY_DB'] = os.environ.get('SAP_B1_COMPANY_DB',

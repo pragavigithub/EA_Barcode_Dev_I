@@ -22,8 +22,7 @@ class DualDatabaseManager:
     def setup_engines(self):
         """Setup both SQLite and MySQL engines"""
         # SQLite engine (primary for Replit)
-        sqlite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'wms.db')
-        self.sqlite_engine = create_engine(f"sqlite:///{sqlite_path}")
+
         
         # MySQL engine (for local development sync)
         mysql_config = {

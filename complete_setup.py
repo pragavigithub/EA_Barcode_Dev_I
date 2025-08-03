@@ -22,7 +22,7 @@ def create_env_file():
 # =============================================================================
 
 # PostgreSQL (Primary for Replit)
-DATABASE_URL=postgresql://username:password@host:5432/database_name
+DATABASE_URL=mysql+pymysql://root:root@123@localhost:3306/wms_db_dev
 
 # MySQL (Local Development - Use ngrok for Replit access)
 MYSQL_HOST=localhost
@@ -38,7 +38,7 @@ MYSQL_DATABASE=wms_db_dev
 # =============================================================================
 # SAP B1 Integration Configuration
 # =============================================================================
-SAP_B1_SERVER=https://192.168.154.173:50000
+SAP_B1_SERVER=https://192.168.1.5:50000
 SAP_B1_USERNAME=manager
 SAP_B1_PASSWORD=1422
 SAP_B1_COMPANY_DB=EINV-TESTDB-LIVE-HUST
