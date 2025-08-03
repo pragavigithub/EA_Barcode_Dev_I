@@ -1,0 +1,17 @@
+modules = ["web", "python-3.11", "nodejs-20", "java-graalvm22.3"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["unixODBC"]
+
+[workflows]
+runButton = "Run Python Flask Backend"
+
+[[workflows.workflow]]
+name = "Run Python Flask Backend"
+author = 45915036
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main.py"
